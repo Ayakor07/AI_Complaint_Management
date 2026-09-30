@@ -1,21 +1,23 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 8 (AI analysis integrated)
+# Decision Support System  -  VERSION 10 (Admin: Analytics Charts)
 #
-# This version adds an "AI Complaint Analysis" section to the
-# complaint views for Students, Staff and Administrators:
-#   - the local AI engine (utils/ai_engine.py) analyses each complaint
-#   - the result is saved ONCE in the ai_analysis table and reused
-#   - the AI priority is only a RECOMMENDATION (it never changes the
-#     priority stored on the complaint)
+# This version adds Plotly charts below the KPI cards on the
+# Administrator dashboard:
+#   - Complaints by Category   (bar chart)
+#   - Complaints by Status     (donut chart)
+#   - Complaints by Priority   (bar chart)
+#   - Complaints Over Time     (line chart)
+# All charts use live data from the complaints table in SQLite.
 # Login still uses the demo accounts below.
 # ---------------------------------------------------------------
 
 import streamlit as st  # Streamlit turns this Python file into a web app
 import pandas as pd     # Pandas builds the complaint tables
+import plotly.express as px  # NEW: Plotly Express makes charts with very little code
+from datetime import datetime  # used to turn date text into real dates
 
-# CHANGED: we now also import get_ai_analysis and save_ai_analysis
 from utils.database import (
     initialize_database,
     get_user_by_email,
@@ -31,7 +33,7 @@ from utils.database import (
     get_ai_analysis,
     save_ai_analysis,
 )
-from utils.ai_engine import analyze_complaint  # NEW: the local AI engine
+from utils.ai_engine import analyze_complaint  # the local AI engine
 
 # ---------------------------------------------------------------
 # 1. PAGE SETTINGS
@@ -163,6 +165,12 @@ STATUS_ICONS = {
     "Resolved": "🟢",
 }
 
+# NEW: the colours used in the charts (amber / blue / green for status,
+# green / amber / red for priority).
+STATUS_COLORS = {"Pending": "#f59e0b",
+                 "In Progress": "#2563eb", "Resolved": "#16a34a"}
+PRIORITY_COLORS = {"Low": "#16a34a", "Medium": "#f59e0b", "High": "#dc2626"}
+
 # ---------------------------------------------------------------
 # 4. SESSION STATE (the app's "memory")
 # ---------------------------------------------------------------
@@ -278,7 +286,6 @@ def handle_complaint_submit():
     )
 
 
-# NEW: get the AI analysis for a complaint (from the database, or create it once).
 def get_or_create_ai_analysis(complaint):
     """Return the AI analysis for a complaint as a dictionary.
 
@@ -323,7 +330,6 @@ def get_or_create_ai_analysis(complaint):
     return get_ai_analysis(complaint_id)
 
 
-# NEW: draws the "AI Complaint Analysis" section.
 def show_ai_analysis(complaint, viewer):
     """Display the AI analysis of a complaint.
 
@@ -459,7 +465,7 @@ def show_complaint_details(complaint_id, student_id):
         key=f"description_box_{complaint['id']}",
     )
 
-    # ----- NEW: AI analysis (ownership was already checked above) ---
+    # ----- AI analysis (ownership was already checked above) --------
     show_ai_analysis(complaint, viewer="student")
 
     # ----- Staff responses ------------------------------------------
@@ -573,7 +579,7 @@ def show_staff_complaint_details(complaint_id, staff_id):
         key=f"staff_description_box_{complaint['id']}",
     )
 
-    # ----- NEW: AI analysis + suggested response --------------------
+    # ----- AI analysis + suggested response -------------------------
     # (the assignment was already checked above)
     show_ai_analysis(complaint, viewer="staff")
 
@@ -792,7 +798,7 @@ def show_admin_assignment_section():
         key=f"admin_description_box_{complaint['id']}",
     )
 
-    # ----- NEW: AI analysis (the administrator role was checked above) ---
+    # ----- AI analysis (the administrator role was checked above) ---
     show_ai_analysis(complaint, viewer="admin")
 
     # ----- Part 4: assign or reassign --------------------------------
@@ -841,6 +847,284 @@ def show_admin_assignment_section():
             args=(complaint["id"],),
             use_container_width=True,
         )
+
+
+# Turns the date text stored in SQLite into a real date we can subtract.
+def parse_db_datetime(text):
+    """Convert text like '2026-09-30 14:05:00' into a datetime object.
+    Returns None if the text is empty or not in that format."""
+    try:
+        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        # ValueError = wrong format, TypeError = the value was None (empty)
+        return None
+
+
+# Turns a number of hours into friendly text.
+def format_duration(total_hours):
+    """Show a duration in the most readable unit:
+         under 1 hour   -> minutes  (e.g. '42 minutes')
+         under 24 hours -> hours    (e.g. '18.5 hours')
+         24 hours+      -> days     (e.g. '2.4 days')"""
+    if total_hours < 1:
+        return f"{total_hours * 60:.0f} minutes"
+    if total_hours < 24:
+        return f"{total_hours:.1f} hours"
+    return f"{total_hours / 24:.1f} days"
+
+
+# Calculates every KPI from the list of complaints.
+def calculate_admin_kpis(complaints):
+    """Work out the dashboard numbers from a list of complaints.
+    Nothing here is hard-coded: everything comes from the data passed in.
+    Returns a dictionary of results."""
+
+    total = len(complaints)
+
+    # Count complaints by status and by priority.
+    pending = len([c for c in complaints if c["status"] == "Pending"])
+    in_progress = len([c for c in complaints if c["status"] == "In Progress"])
+    resolved = len([c for c in complaints if c["status"] == "Resolved"])
+    high_priority = len([c for c in complaints if c["priority"] == "High"])
+
+    # Resolution rate = resolved / total x 100.
+    # If there are no complaints we use 0.0 so we never divide by zero.
+    resolution_rate = (resolved / total * 100) if total > 0 else 0.0
+
+    # Average resolution time: for each RESOLVED complaint, measure the time
+    # between created_at and resolved_at, then average those times.
+    durations_in_hours = []
+    for c in complaints:
+        if c["status"] != "Resolved":
+            continue  # only resolved complaints count
+        created = parse_db_datetime(c["created_at"])
+        finished = parse_db_datetime(c["resolved_at"])
+        # Skip complaints with a missing date, or a resolved date before the created date.
+        if created is None or finished is None or finished < created:
+            continue
+        durations_in_hours.append((finished - created).total_seconds() / 3600)
+
+    if durations_in_hours:
+        average_text = format_duration(
+            sum(durations_in_hours) / len(durations_in_hours))
+    else:
+        average_text = "N/A"  # no resolved complaints to average
+
+    return {
+        "total": total,
+        "pending": pending,
+        "in_progress": in_progress,
+        "resolved": resolved,
+        "high_priority": high_priority,
+        "resolution_rate": resolution_rate,
+        "average_resolution_time": average_text,
+        "complaints_used_for_average": len(durations_in_hours),
+    }
+
+
+# NEW: counts how many complaints have each value of a column.
+def count_by_column(df, column, expected_values, label):
+    """Count complaints per value of one column (e.g. per category).
+
+    df              -> a Pandas table of all complaints
+    column          -> the column to count, e.g. "category"
+    expected_values -> the values we always want to show, even with 0 complaints
+    label           -> the name for the first column of the result, e.g. "Category"
+
+    Returns a small table with two columns: <label> and Complaints."""
+
+    # value_counts() counts how many times each value appears.
+    counts = df[column].fillna("Unknown").value_counts()
+
+    # Show the expected values first (in a fixed order), then any unexpected ones.
+    ordered = list(expected_values) + \
+        [v for v in counts.index if v not in expected_values]
+
+    # reindex() puts the counts in that order and fills missing values with 0.
+    counts = counts.reindex(ordered, fill_value=0)
+
+    return pd.DataFrame({label: counts.index, "Complaints": counts.values})
+
+
+# NEW: gives every chart the same clean look.
+def style_chart(fig, max_count=None):
+    """Apply a shared, professional style to a Plotly figure."""
+    fig.update_layout(
+        template="plotly_white",
+        height=350,
+        margin=dict(l=10, r=10, t=55, b=10),
+        title_font_size=16,
+    )
+    # Bar and line charts: start at zero, and use whole numbers on the axis
+    # when the counts are small (you cannot have 0.5 of a complaint).
+    if max_count is not None:
+        fig.update_yaxes(rangemode="tozero")
+        if max_count <= 10:
+            fig.update_yaxes(dtick=1)
+    return fig
+
+
+# NEW: draws the four analytics charts.
+def show_analytics_charts(complaints):
+    """Show the Plotly charts, built from the list of complaints."""
+
+    st.markdown("#### 📊 Complaint Charts")
+
+    # Empty database: nothing to draw yet.
+    if not complaints:
+        st.info("Charts will appear here once complaints have been submitted.")
+        return
+
+    # Put all the complaints into one Pandas table.
+    df = pd.DataFrame(complaints)
+
+    # Count complaints for the three "count by" charts.
+    category_df = count_by_column(
+        df, "category", COMPLAINT_CATEGORIES, "Category")
+    status_df = count_by_column(df, "status", STATUS_OPTIONS, "Status")
+    priority_df = count_by_column(
+        df, "priority", COMPLAINT_PRIORITIES, "Priority")
+
+    # ----- Row 1: category (bar) and status (donut) ------------------
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig = px.bar(
+            category_df, x="Category", y="Complaints", text="Complaints",
+            title="Complaints by Category",
+            color_discrete_sequence=["#2563eb"],
+        )
+        # numbers above the bars
+        fig.update_traces(textposition="outside", cliponaxis=False)
+        fig.update_xaxes(tickangle=-35)  # tilt the labels so they fit
+        style_chart(fig, max_count=category_df["Complaints"].max())
+        st.plotly_chart(fig, key="chart_category")
+
+    with col2:
+        # Hide statuses with 0 complaints so no empty "0" slices appear.
+        status_shown = status_df[status_df["Complaints"] > 0]
+        fig = px.pie(
+            status_shown, names="Status", values="Complaints", hole=0.45,  # hole makes it a donut
+            title="Complaints by Status",
+            color="Status", color_discrete_map=STATUS_COLORS,
+        )
+        fig.update_traces(textinfo="value+percent", sort=False)
+        style_chart(fig)
+        st.plotly_chart(fig, key="chart_status")
+
+    # ----- Row 2: priority (bar) and trend over time (line) ----------
+    col3, col4 = st.columns(2)
+
+    with col3:
+        fig = px.bar(
+            priority_df, x="Priority", y="Complaints", text="Complaints",
+            title="Complaints by Priority",
+            color="Priority", color_discrete_map=PRIORITY_COLORS,
+        )
+        fig.update_traces(textposition="outside", cliponaxis=False)
+        # the x-axis already names each bar
+        fig.update_layout(showlegend=False)
+        style_chart(fig, max_count=priority_df["Complaints"].max())
+        st.plotly_chart(fig, key="chart_priority")
+
+    with col4:
+        # Turn the created_at text into real dates. Bad values become empty and are dropped.
+        created = pd.to_datetime(df["created_at"], errors="coerce").dropna()
+
+        if created.empty:
+            st.info("The trend chart needs complaints with a valid created date.")
+        else:
+            # .normalize() removes the time of day, so all complaints on the
+            # same date are counted together.
+            daily = created.dt.normalize().value_counts().sort_index()
+
+            # Add the days with NO complaints as 0, so the line has no gaps.
+            full_range = pd.date_range(
+                daily.index.min(), daily.index.max(), freq="D")
+            daily = daily.reindex(full_range, fill_value=0)
+
+            trend_df = pd.DataFrame(
+                {"Date": daily.index, "Complaints": daily.values})
+
+            fig = px.line(
+                trend_df, x="Date", y="Complaints", markers=True,  # markers = dots on the line
+                title="Complaints Over Time",
+            )
+            fig.update_traces(line_color="#2563eb", line_width=3)
+            fig.update_xaxes(tickformat="%d %b")  # e.g. "30 Sep"
+
+            # With only a few dates, show one tick per day.
+            if len(trend_df) <= 10:
+                fig.update_xaxes(dtick="D1")
+
+            # With a single date there is just one dot, so we widen the axis by a
+            # day on each side to keep the chart looking clean.
+            if len(trend_df) == 1:
+                only_day = trend_df["Date"].iloc[0]
+                fig.update_xaxes(range=[
+                    (only_day - pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+                    (only_day + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+                ])
+
+            style_chart(fig, max_count=trend_df["Complaints"].max())
+            st.plotly_chart(fig, key="chart_trend")
+
+
+# Draws the "Analytics Overview" KPI cards (and the charts below them).
+def show_analytics_overview():
+    """Show the KPI metric cards for the administrator."""
+
+    # SECURITY CHECK: analytics are only for administrators.
+    if st.session_state.role != "Administrator":
+        st.error("⛔ Only administrators can view analytics.")
+        return
+
+    st.subheader("📈 Analytics Overview")
+
+    # Load ALL complaints from SQLite and calculate the numbers.
+    complaints = get_complaints()
+    kpis = calculate_admin_kpis(complaints)
+
+    st.caption("Calculated live from the complaints stored in the database.")
+
+    # Row 1: complaint counts.
+    row1 = st.columns(4)
+    row1[0].metric("Total Complaints", kpis["total"])
+    row1[1].metric("Pending", kpis["pending"])
+    row1[2].metric("In Progress", kpis["in_progress"])
+    row1[3].metric("Resolved", kpis["resolved"])
+
+    # Row 2: priority, rate and time.
+    row2 = st.columns(3)
+    row2[0].metric(
+        "High Priority Complaints",
+        kpis["high_priority"],
+        help="Complaints whose priority is set to High (the priority chosen on the complaint).",
+    )
+    row2[1].metric(
+        "Resolution Rate",
+        f"{kpis['resolution_rate']:.1f}%",
+        help="Resolved complaints divided by total complaints, times 100.",
+    )
+    row2[2].metric(
+        "Average Resolution Time",
+        kpis["average_resolution_time"],
+        help="Average time between when a complaint was created and when it was resolved.",
+    )
+
+    if kpis["total"] == 0:
+        st.info("There are no complaints yet, so all values are zero.")
+    elif kpis["complaints_used_for_average"] > 0:
+        st.caption(
+            f"Average resolution time is based on {kpis['complaints_used_for_average']} resolved complaint(s)."
+        )
+    else:
+        st.caption(
+            "Average resolution time will appear once a complaint has been resolved.")
+
+    # NEW: the charts go directly below the KPI cards.
+    st.write("")
+    show_analytics_charts(complaints)
 
 
 # ---------------------------------------------------------------
@@ -953,8 +1237,6 @@ def show_login_page():
 # ---------------------------------------------------------------
 # 7. ROLE DASHBOARDS
 # ---------------------------------------------------------------
-# CHANGED: the AI Analysis placeholder card was removed from this
-# dashboard, because the analysis now appears inside Complaint Details.
 def show_student_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Student Dashboard")
@@ -1130,7 +1412,12 @@ def show_admin_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Administrator Dashboard")
 
-    # The real feature: view all complaints, see the AI analysis, and assign to staff.
+    # KPI cards, with the charts directly below them.
+    show_analytics_overview()
+
+    st.divider()
+
+    # View all complaints, see the AI analysis, and assign to staff.
     show_admin_assignment_section()
 
     st.divider()
@@ -1138,8 +1425,9 @@ def show_admin_dashboard():
     # The remaining admin features are still placeholders.
     col1, col2, col3 = st.columns(3)
     with col1:
-        placeholder_section("📊", "Complaint Analytics",
-                            "Charts for trends, resolution rate and recurring issues.")
+        # CHANGED: the charts are done, so this card now describes what is left.
+        placeholder_section("🔁", "Recurring Issues",
+                            "The most common complaint topics and repeated problems will be analysed here.")
     with col2:
         placeholder_section(
             "👥", "User Management", "Administrators will manage student and staff accounts.")
@@ -1169,7 +1457,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 8")
+    st.caption("Final-Year Project Prototype • Version 10")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING
