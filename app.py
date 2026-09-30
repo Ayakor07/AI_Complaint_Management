@@ -1,10 +1,14 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 1 (Streamlit foundation)
+# Decision Support System  -  VERSION 2 (Authentication foundation)
 #
-# This first version only shows the landing page and the layout.
-# There is NO login, database, AI or analytics yet.
+# This version adds:
+#   - a login page with 3 demo accounts
+#   - role storage in st.session_state
+#   - a different placeholder dashboard for each role
+#   - a logout button
+# There is still NO database, AI or analytics.
 # ---------------------------------------------------------------
 
 import streamlit as st  # Streamlit turns this Python file into a web app
@@ -13,19 +17,15 @@ import streamlit as st  # Streamlit turns this Python file into a web app
 # 1. PAGE SETTINGS
 # ---------------------------------------------------------------
 # set_page_config() must be the FIRST Streamlit command in the file.
-# It sets the browser tab title, icon and page layout.
 st.set_page_config(
     page_title="Complaint Management System",
     page_icon="🎓",
-    layout="wide",  # use the full width of the browser
+    layout="wide",
 )
 
 # ---------------------------------------------------------------
-# 2. CUSTOM STYLING (CSS)
+# 2. CUSTOM STYLING (CSS)  -  unchanged from Version 1
 # ---------------------------------------------------------------
-# Streamlit lets us add a little CSS to make the page look more
-# professional. You do not need to understand CSS to use this;
-# it only changes colours, spacing and card appearance.
 st.markdown(
     """
     <style>
@@ -49,7 +49,7 @@ st.markdown(
             margin: 0;
         }
 
-        /* Cards for Student / Staff / Administrator */
+        /* Cards for roles and dashboard sections */
         .card {
             background: #ffffff;
             border: 1px solid #e5e7eb;
@@ -72,126 +72,292 @@ st.markdown(
         }
     </style>
     """,
-    unsafe_allow_html=True,  # allows Streamlit to render our HTML/CSS
+    unsafe_allow_html=True,
 )
 
 # ---------------------------------------------------------------
-# 3. SIDEBAR
+# 3. DEMO USER ACCOUNTS
 # ---------------------------------------------------------------
-# Everything inside "with st.sidebar:" appears in the left panel.
+# A dictionary stores each account. The KEY is the email address and
+# the VALUE holds the password, display name and role.
+# NOTE: Plain-text passwords are fine for a demo only. Later, the
+# accounts will move into the SQLite database.
+DEMO_USERS = {
+    "student@university.edu": {
+        "password": "student123",
+        "name": "Demo Student",
+        "role": "Student",
+    },
+    "staff@university.edu": {
+        "password": "staff123",
+        "name": "Demo Staff",
+        "role": "Staff",
+    },
+    "admin@university.edu": {
+        "password": "admin123",
+        "name": "Demo Administrator",
+        "role": "Administrator",
+    },
+}
+
+# ---------------------------------------------------------------
+# 4. SESSION STATE (the app's "memory")
+# ---------------------------------------------------------------
+# Streamlit re-runs this whole file on every click, so normal
+# variables are forgotten. st.session_state keeps values between
+# runs. We create the values only if they do not exist yet.
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user_email = None
+    st.session_state.user_name = None
+    st.session_state.role = None
+
+
+# ---------------------------------------------------------------
+# 5. HELPER FUNCTIONS
+# ---------------------------------------------------------------
+def check_login(email, password):
+    """Return the user's details if the email and password are correct,
+    otherwise return None."""
+    email = email.strip().lower()  # ignore extra spaces and capital letters
+    user = DEMO_USERS.get(email)   # look up the email in our dictionary
+    if user is not None and user["password"] == password:
+        return {"email": email, "name": user["name"], "role": user["role"]}
+    return None
+
+
+def logout():
+    """Clear the saved login details. Used by the Logout button."""
+    st.session_state.logged_in = False
+    st.session_state.user_email = None
+    st.session_state.user_name = None
+    st.session_state.role = None
+
+
+def show_hero(message):
+    """Show the blue banner with the project title and a short message."""
+    st.markdown(
+        f"""
+        <div class="hero">
+            <h1>AI-Enhanced Complaint Management and Service Quality Decision Support System</h1>
+            <p>{message}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def placeholder_section(icon, title, description):
+    """Show one card for a feature that will be built in a later stage."""
+    st.markdown(
+        f"""
+        <div class="card">
+            <h3>{icon} {title}</h3>
+            <p>{description}</p>
+            <p><em>🚧 Coming in a later version.</em></p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------
+# 6. LOGIN PAGE
+# ---------------------------------------------------------------
+def show_login_page():
+    show_hero(
+        "Welcome! This system helps the university receive, track and resolve "
+        "complaints, and supports better service-quality decisions. "
+        "Please log in to continue."
+    )
+
+    # Three columns: the middle one holds the login form, so it appears centred.
+    left, middle, right = st.columns([1, 1.4, 1])
+
+    with middle:
+        st.subheader("🔐 Login")
+
+        # st.form groups the inputs so the app only reacts when the
+        # button is pressed (not on every keystroke).
+        with st.form("login_form"):
+            email = st.text_input("Email", placeholder="name@university.edu")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button(
+                "Login", use_container_width=True)
+
+        # This block runs only after the Login button is pressed.
+        if submitted:
+            user = check_login(email, password)
+            if user:
+                # Save the login details in session_state...
+                st.session_state.logged_in = True
+                st.session_state.user_email = user["email"]
+                st.session_state.user_name = user["name"]
+                st.session_state.role = user["role"]
+                # ...then re-run the app so the dashboard appears.
+                st.rerun()
+            else:
+                st.error("Incorrect email or password. Please try again.")
+
+        # Helpful for demonstrations: show the demo accounts.
+        with st.expander("Demo accounts (for demonstration only)"):
+            st.markdown(
+                """
+                | Role | Email | Password |
+                |---|---|---|
+                | Student | student@university.edu | student123 |
+                | Staff | staff@university.edu | staff123 |
+                | Administrator | admin@university.edu | admin123 |
+                """
+            )
+
+    # The three role cards from Version 1 stay on the login page.
+    st.write("")
+    st.subheader("Who Uses This System?")
+    col_student, col_staff, col_admin = st.columns(3)
+
+    with col_student:
+        st.markdown(
+            """
+            <div class="card">
+                <h3>🧑‍🎓 Student</h3>
+                <p>Report issues and follow their progress.</p>
+                <ul>
+                    <li>Submit a complaint</li>
+                    <li>Track complaint status</li>
+                    <li>View staff responses</li>
+                    <li>View AI analysis</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col_staff:
+        st.markdown(
+            """
+            <div class="card">
+                <h3>🧑‍💼 Staff</h3>
+                <p>Handle and resolve assigned complaints.</p>
+                <ul>
+                    <li>View assigned complaints</li>
+                    <li>Update complaint status</li>
+                    <li>Respond to students</li>
+                    <li>Use AI-suggested responses</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col_admin:
+        st.markdown(
+            """
+            <div class="card">
+                <h3>🛡️ Administrator</h3>
+                <p>Oversee complaints and service quality.</p>
+                <ul>
+                    <li>View and assign all complaints</li>
+                    <li>Analyse trends and resolution rates</li>
+                    <li>View AI management insights</li>
+                    <li>Generate reports</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# ---------------------------------------------------------------
+# 7. ROLE DASHBOARDS (placeholders)
+# ---------------------------------------------------------------
+def show_student_dashboard():
+    show_hero(f"Welcome back, {st.session_state.user_name}!")
+    st.header("Student Dashboard")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        placeholder_section("📝", "Submit Complaint",
+                            "Students will fill in a form to report a problem.")
+    with col2:
+        placeholder_section(
+            "📂", "My Complaints", "Students will see a list of all complaints they submitted.")
+    with col3:
+        placeholder_section("🔎", "Complaint Status",
+                            "Students will track progress and read staff responses.")
+
+
+def show_staff_dashboard():
+    show_hero(f"Welcome back, {st.session_state.user_name}!")
+    st.header("Staff Dashboard")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        placeholder_section("📥", "Assigned Complaints",
+                            "Staff will see the complaints assigned to them.")
+    with col2:
+        placeholder_section(
+            "🔄", "Update Status", "Staff will change a complaint to Open, In Progress or Resolved.")
+    with col3:
+        placeholder_section("💬", "Respond to Complaint",
+                            "Staff will write a reply to the student.")
+
+
+def show_admin_dashboard():
+    show_hero(f"Welcome back, {st.session_state.user_name}!")
+    st.header("Administrator Dashboard")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        placeholder_section("📊", "Complaint Analytics",
+                            "Charts for trends, resolution rate and recurring issues.")
+    with col2:
+        placeholder_section(
+            "👥", "User Management", "Administrators will manage student and staff accounts.")
+    with col3:
+        placeholder_section(
+            "📄", "Reports", "Administrators will generate service-quality reports.")
+
+
+# ---------------------------------------------------------------
+# 8. SIDEBAR
+# ---------------------------------------------------------------
 with st.sidebar:
     st.title("🎓 Complaint System")
     st.caption(
         "AI-Enhanced Complaint Management and Service Quality Decision Support System")
     st.divider()
 
-    # st.radio shows a list of options and remembers which one is chosen.
-    # These are only PLACEHOLDERS for now. Real pages come later.
-    selected_page = st.radio(
-        "Navigation",
-        ["Home", "Login", "Student Dashboard",
-            "Staff Dashboard", "Admin Dashboard", "Reports"],
-    )
+    if st.session_state.logged_in:
+        # Show who is logged in.
+        st.markdown(f"**👤 {st.session_state.user_name}**")
+        st.caption(f"Role: {st.session_state.role}")
+        st.caption(st.session_state.user_email)
+
+        # on_click=logout runs our logout() function when the button is pressed.
+        st.button("Logout", on_click=logout, use_container_width=True)
+    else:
+        st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 1")
+    st.caption("Final-Year Project Prototype • Version 2")
 
 # ---------------------------------------------------------------
-# 4. PLACEHOLDER MESSAGE
+# 9. MAIN PAGE ROUTING
 # ---------------------------------------------------------------
-# If the user picks anything other than "Home", show a friendly
-# "coming soon" note. The landing page still shows below it.
-if selected_page != "Home":
-    st.info(
-        f"🚧 **{selected_page}** is a placeholder. This feature will be built in a later version.")
-
-# ---------------------------------------------------------------
-# 5. HERO / WELCOME SECTION
-# ---------------------------------------------------------------
-st.markdown(
-    """
-    <div class="hero">
-        <h1>AI-Enhanced Complaint Management and Service Quality Decision Support System</h1>
-        <p>
-            Welcome! This system helps the university receive, track and resolve
-            complaints, and uses data insights to support better service-quality
-            decisions for students, staff and management.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.subheader("About the System")
-st.write(
-    "This platform manages university complaints from submission to resolution. "
-    "Students can report problems, staff can respond and update progress, and "
-    "administrators can monitor trends to improve services across the institution."
-)
-
-st.write("")  # empty line for spacing
+# Decide which page to show, based on whether the user is logged in
+# and what role is stored in session_state.
+if not st.session_state.logged_in:
+    show_login_page()
+elif st.session_state.role == "Student":
+    show_student_dashboard()
+elif st.session_state.role == "Staff":
+    show_staff_dashboard()
+elif st.session_state.role == "Administrator":
+    show_admin_dashboard()
 
 # ---------------------------------------------------------------
-# 6. THREE ROLE CARDS
-# ---------------------------------------------------------------
-st.subheader("Who Uses This System?")
-
-# st.columns(3) splits the page into three equal side-by-side columns.
-col_student, col_staff, col_admin = st.columns(3)
-
-with col_student:
-    st.markdown(
-        """
-        <div class="card">
-            <h3>🧑‍🎓 Student</h3>
-            <p>Report issues and follow their progress.</p>
-            <ul>
-                <li>Submit a complaint</li>
-                <li>Track complaint status</li>
-                <li>View staff responses</li>
-                <li>View AI analysis</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col_staff:
-    st.markdown(
-        """
-        <div class="card">
-            <h3>🧑‍💼 Staff</h3>
-            <p>Handle and resolve assigned complaints.</p>
-            <ul>
-                <li>View assigned complaints</li>
-                <li>Update complaint status</li>
-                <li>Respond to students</li>
-                <li>Use AI-suggested responses</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col_admin:
-    st.markdown(
-        """
-        <div class="card">
-            <h3>🛡️ Administrator</h3>
-            <p>Oversee complaints and service quality.</p>
-            <ul>
-                <li>View and assign all complaints</li>
-                <li>Analyse trends and resolution rates</li>
-                <li>View AI management insights</li>
-                <li>Generate reports</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# ---------------------------------------------------------------
-# 7. FOOTER
+# 10. FOOTER
 # ---------------------------------------------------------------
 st.write("")
 st.divider()
