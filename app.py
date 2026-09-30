@@ -1,21 +1,19 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 10 (Admin: Analytics Charts)
+# Decision Support System  -  VERSION 12 (Admin: AI Management Insights)
 #
-# This version adds Plotly charts below the KPI cards on the
-# Administrator dashboard:
-#   - Complaints by Category   (bar chart)
-#   - Complaints by Status     (donut chart)
-#   - Complaints by Priority   (bar chart)
-#   - Complaints Over Time     (line chart)
-# All charts use live data from the complaints table in SQLite.
+# This version adds an "AI Management Insights" section to the
+# Administrator analytics. It turns the complaint data into a few
+# short, management-oriented observations using simple, transparent
+# rules. Every number shown is calculated from the database.
+# The insights are read-only: nothing is changed or sent automatically.
 # Login still uses the demo accounts below.
 # ---------------------------------------------------------------
 
 import streamlit as st  # Streamlit turns this Python file into a web app
 import pandas as pd     # Pandas builds the complaint tables
-import plotly.express as px  # NEW: Plotly Express makes charts with very little code
+import plotly.express as px  # Plotly Express makes charts with very little code
 from datetime import datetime  # used to turn date text into real dates
 
 from utils.database import (
@@ -33,7 +31,9 @@ from utils.database import (
     get_ai_analysis,
     save_ai_analysis,
 )
-from utils.ai_engine import analyze_complaint  # the local AI engine
+# We reuse two small helper functions from the AI engine
+# (clean_text tidies text, count_keyword_matches counts keywords in it).
+from utils.ai_engine import analyze_complaint, clean_text, count_keyword_matches
 
 # ---------------------------------------------------------------
 # 1. PAGE SETTINGS
@@ -165,11 +165,41 @@ STATUS_ICONS = {
     "Resolved": "🟢",
 }
 
-# NEW: the colours used in the charts (amber / blue / green for status,
+# The colours used in the charts (amber / blue / green for status,
 # green / amber / red for priority).
 STATUS_COLORS = {"Pending": "#f59e0b",
                  "In Progress": "#2563eb", "Resolved": "#16a34a"}
 PRIORITY_COLORS = {"Low": "#16a34a", "Medium": "#f59e0b", "High": "#dc2626"}
+
+# The themes the Recurring Issues analysis looks for.
+# Each theme has a list of keywords. If a complaint's title or description
+# contains any of them, the complaint counts towards that theme.
+# To track a new theme, just add a new line here.
+RECURRING_THEMES = {
+    "Wi-Fi / Internet": ["wifi", "wi-fi", "internet", "network", "connection"],
+    "Cleanliness": ["clean", "dirty", "hygiene", "garbage", "trash", "smell"],
+    "Toilets / Washrooms": ["toilet", "washroom", "restroom", "bathroom"],
+    "Classrooms": ["classroom", "lecture hall", "projector", "whiteboard"],
+    "Library": ["library", "librarian", "book", "reading room", "study room"],
+    "Hostel / Accommodation": ["hostel", "dormitory", "dorm", "warden", "roommate", "accommodation"],
+    "Transport": ["bus", "shuttle", "transport", "driver", "route"],
+    "Electricity / Power": ["electricity", "power cut", "power outage", "blackout", "no power", "electrical"],
+    "Water Supply": ["water", "leak"],
+    "Fees / Payments": ["fee", "tuition", "payment", "refund", "invoice", "scholarship", "charged"],
+    "Food / Canteen": ["canteen", "cafeteria", "food", "meal"],
+    "Exams / Results": ["exam", "result", "grade", "mark"],
+    "Staff Attitude / Response": ["rude", "ignored", "ignoring", "unresponsive", "no response", "unprofessional"],
+    "Safety / Security": ["security", "unsafe", "safety", "theft", "stolen"],
+}
+
+# A theme is called "Recurring" when at least this many complaints mention it.
+RECURRING_THRESHOLD = 2
+
+# NEW: minimum amounts of data before an insight is shown.
+# Below these numbers we leave the insight out instead of guessing.
+MIN_COMPLAINTS_FOR_INSIGHTS = 3   # complaints needed for any insight at all
+# resolved complaints needed for the average-time insight
+MIN_RESOLVED_FOR_AVERAGE = 2
 
 # ---------------------------------------------------------------
 # 4. SESSION STATE (the app's "memory")
@@ -922,7 +952,7 @@ def calculate_admin_kpis(complaints):
     }
 
 
-# NEW: counts how many complaints have each value of a column.
+# Counts how many complaints have each value of a column.
 def count_by_column(df, column, expected_values, label):
     """Count complaints per value of one column (e.g. per category).
 
@@ -946,7 +976,7 @@ def count_by_column(df, column, expected_values, label):
     return pd.DataFrame({label: counts.index, "Complaints": counts.values})
 
 
-# NEW: gives every chart the same clean look.
+# Gives every chart the same clean look.
 def style_chart(fig, max_count=None):
     """Apply a shared, professional style to a Plotly figure."""
     fig.update_layout(
@@ -964,7 +994,7 @@ def style_chart(fig, max_count=None):
     return fig
 
 
-# NEW: draws the four analytics charts.
+# Draws the four analytics charts.
 def show_analytics_charts(complaints):
     """Show the Plotly charts, built from the list of complaints."""
 
@@ -1070,7 +1100,372 @@ def show_analytics_charts(complaints):
             st.plotly_chart(fig, key="chart_trend")
 
 
-# Draws the "Analytics Overview" KPI cards (and the charts below them).
+# Finds recurring themes by matching keywords in each complaint.
+def find_recurring_themes(complaints):
+    """Count how many complaints mention each theme in RECURRING_THEMES.
+
+    A complaint counts ONCE per theme, even if it uses several of that
+    theme's keywords. A complaint can belong to several themes.
+
+    Returns a Pandas table with columns 'Theme' and 'Related Complaints',
+    sorted from most to least frequent. Themes with 0 complaints are left out."""
+
+    # Start every theme at 0.
+    theme_counts = {theme: 0 for theme in RECURRING_THEMES}
+
+    for complaint in complaints:
+        # Combine the title and description, then tidy it (lowercase etc.).
+        text = clean_text(f"{complaint['title']} {complaint['description']}")
+
+        for theme, keywords in RECURRING_THEMES.items():
+            # count_keyword_matches() returns how many keywords were found.
+            # We only care whether at least one was found.
+            if count_keyword_matches(text, keywords) > 0:
+                theme_counts[theme] += 1
+
+    # Keep only themes that were mentioned at least once.
+    rows = [(theme, count)
+            for theme, count in theme_counts.items() if count > 0]
+    theme_df = pd.DataFrame(rows, columns=["Theme", "Related Complaints"])
+
+    # Most frequent first. kind="stable" keeps the original order for ties.
+    return theme_df.sort_values("Related Complaints", ascending=False, kind="stable").reset_index(drop=True)
+
+
+# Draws the "Recurring Issues" section.
+def show_recurring_issues(complaints):
+    """Show the most common categories, repeated themes and a management interpretation."""
+
+    st.markdown("#### 🔁 Recurring Issues")
+
+    # Nothing to analyse yet.
+    if not complaints:
+        st.info(
+            "Recurring issues will appear here once complaints have been submitted.")
+        return
+
+    total = len(complaints)
+    df = pd.DataFrame(complaints)
+
+    # ----- Part 1: Most common categories ----------------------------
+    # value_counts() sorts from most to least frequent automatically.
+    category_counts = df["category"].fillna("Unknown").value_counts()
+    category_df = pd.DataFrame({
+        "Rank": range(1, len(category_counts) + 1),
+        "Category": category_counts.index,
+        "Complaints": category_counts.values,
+    })
+    category_df["Share of Complaints"] = category_df["Complaints"].map(
+        lambda n: f"{n / total * 100:.1f}%"
+    )
+
+    # ----- Part 2: Repeated themes -----------------------------------
+    theme_df = find_recurring_themes(complaints)
+    if not theme_df.empty:
+        theme_df.insert(0, "Rank", range(1, len(theme_df) + 1))
+        theme_df["Share of Complaints"] = theme_df["Related Complaints"].map(
+            lambda n: f"{n / total * 100:.1f}%"
+        )
+        # Label each theme as "Recurring" or a single report.
+        theme_df["Pattern"] = theme_df["Related Complaints"].map(
+            lambda n: "🔁 Recurring" if n >= RECURRING_THRESHOLD else "Single report"
+        )
+
+    # Show the two tables side by side.
+    left, right = st.columns(2)
+
+    with left:
+        st.markdown("**Most Common Complaint Categories**")
+        st.dataframe(category_df, use_container_width=True, hide_index=True)
+
+    with right:
+        st.markdown("**Repeated Complaint Themes**")
+        if theme_df.empty:
+            st.info("None of the tracked keywords appear in the current complaints.")
+        else:
+            st.dataframe(theme_df, use_container_width=True, hide_index=True)
+            st.caption(
+                f"A theme is marked Recurring when {RECURRING_THRESHOLD} or more complaints mention it. "
+                "One complaint can match more than one theme."
+            )
+
+    # Let the reader see exactly how themes are detected (transparency).
+    with st.expander("How are themes detected?"):
+        st.write(
+            "Each complaint's title and description is searched for the keywords below. "
+            "If any keyword appears, the complaint counts towards that theme."
+        )
+        keyword_table = pd.DataFrame({
+            "Theme": list(RECURRING_THEMES.keys()),
+            "Keywords": [", ".join(words) for words in RECURRING_THEMES.values()],
+        })
+        st.dataframe(keyword_table, use_container_width=True, hide_index=True)
+
+    # ----- Part 3: Management interpretation -------------------------
+    st.markdown("##### 🧭 Management Interpretation")
+    st.write(
+        "Categories and themes that appear again and again can point to areas that need "
+        "management attention. A single complaint may be an isolated incident, but repeated "
+        "complaints about the same topic often suggest an underlying problem with a service, "
+        "facility or process. Management can use this information to investigate root causes, "
+        "prioritise resources and prevent the same issue from affecting more students."
+    )
+
+    # Highlights that are calculated from the data (not hard-coded).
+    top_category = category_df.iloc[0]
+    st.info(
+        f"**Most frequent category:** {top_category['Category']} "
+        f"({top_category['Complaints']} of {total} complaint(s), {top_category['Share of Complaints']})."
+    )
+
+    if not theme_df.empty:
+        top_theme = theme_df.iloc[0]
+        st.info(
+            f"**Most frequent theme:** {top_theme['Theme']} "
+            f"(mentioned in {top_theme['Related Complaints']} complaint(s))."
+        )
+        recurring = theme_df[theme_df["Related Complaints"]
+                             >= RECURRING_THRESHOLD]
+        if recurring.empty:
+            st.success("No theme has been reported more than once so far.")
+        else:
+            st.warning(
+                "**Themes needing attention (reported repeatedly):** "
+                + ", ".join(recurring["Theme"].tolist()) + "."
+            )
+
+    st.caption(
+        "This analysis uses simple keyword matching, so treat it as a guide. "
+        "Review the actual complaints before deciding on action."
+    )
+
+
+# NEW: finds which category a recurring theme appears in most often.
+def most_common_category_for_theme(complaints, theme):
+    """Look at the complaints that mention a theme and return the category
+    they are most often filed under (or None if no complaint matches)."""
+
+    keywords = RECURRING_THEMES[theme]
+    matching_categories = []
+
+    for complaint in complaints:
+        text = clean_text(f"{complaint['title']} {complaint['description']}")
+        if count_keyword_matches(text, keywords) > 0:
+            matching_categories.append(complaint["category"] or "Unknown")
+
+    if not matching_categories:
+        return None
+
+    # value_counts() sorts most frequent first, so the first index is the most common.
+    return pd.Series(matching_categories).value_counts().index[0]
+
+
+# NEW: counts how many complaints the AI rated Positive / Neutral / Negative.
+def get_sentiment_counts(complaints):
+    """Return a dictionary such as {"Positive": 1, "Neutral": 4, "Negative": 7},
+    using the saved AI analysis of each complaint.
+
+    get_or_create_ai_analysis() reuses a saved analysis, and creates one
+    (with the same local AI engine) only if the complaint has none yet."""
+
+    counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
+
+    for complaint in complaints:
+        analysis = get_or_create_ai_analysis(complaint)
+        if analysis and analysis["sentiment"] in counts:
+            counts[analysis["sentiment"]] += 1
+
+    return counts
+
+
+# NEW: builds the list of management insights using simple rules.
+def generate_management_insights(complaints, sentiment_counts):
+    """Create up to 6 short, data-driven observations for management.
+
+    Each rule below looks at the real data and adds ONE insight, but only
+    when there is enough data to say something meaningful. If the data is
+    not sufficient, that rule is skipped. Every number in the text is
+    calculated here, never typed in by hand.
+
+    Returns a list of text strings (it can be empty)."""
+
+    insights = []
+    total = len(complaints)
+
+    # Too few complaints to say anything reliable.
+    if total < MIN_COMPLAINTS_FOR_INSIGHTS:
+        return insights
+
+    df = pd.DataFrame(complaints)
+    kpis = calculate_admin_kpis(complaints)
+
+    # ----- Insight 1: most frequently reported category -------------
+    category_counts = df["category"].fillna("Unknown").value_counts()
+    top_count = category_counts.iloc[0]
+
+    # Only mention it if the top category has at least 2 complaints.
+    if top_count >= 2:
+        top_categories = category_counts[category_counts ==
+                                         top_count].index.tolist()
+        share = top_count / total * 100
+
+        # If more than 3 categories are tied there is no clear pattern, so skip.
+        if len(top_categories) == 1:
+            insights.append(
+                f"📌 **{top_categories[0]}** is the most frequently reported category, "
+                f"with {top_count} of {total} complaints ({share:.0f}%)."
+            )
+        elif len(top_categories) <= 3:
+            insights.append(
+                f"📌 **{' and '.join(top_categories)}** are the most frequently reported categories, "
+                f"with {top_count} complaints each."
+            )
+
+    # ----- Insight 2: recurring theme -------------------------------
+    theme_df = find_recurring_themes(complaints)
+    if not theme_df.empty:
+        recurring = theme_df[theme_df["Related Complaints"]
+                             >= RECURRING_THRESHOLD]
+
+        if not recurring.empty:
+            top_theme = recurring.iloc[0]["Theme"]
+            top_theme_count = recurring.iloc[0]["Related Complaints"]
+            main_category = most_common_category_for_theme(
+                complaints, top_theme)
+
+            text = f"🔁 A recurring **{top_theme}** theme has been identified, mentioned in {top_theme_count} complaints"
+            if main_category:
+                text += f" (most often filed under {main_category})"
+            text += "."
+
+            # Mention up to two other recurring themes.
+            other_themes = recurring["Theme"].iloc[1:3].tolist()
+            if other_themes:
+                text += " Other recurring themes: " + \
+                    ", ".join(other_themes) + "."
+            insights.append(text)
+
+    # ----- Insight 3: unresolved complaints and resolution rate ------
+    unresolved = kpis["pending"] + kpis["in_progress"]
+    unresolved_share = unresolved / total * 100
+
+    if unresolved_share > 50:
+        insights.append(
+            f"⏳ A majority of complaints remain unresolved: {unresolved} of {total} ({unresolved_share:.0f}%) "
+            f"are still Pending ({kpis['pending']}) or In Progress ({kpis['in_progress']}). "
+            f"The resolution rate is {kpis['resolution_rate']:.1f}%."
+        )
+    elif unresolved > 0:
+        insights.append(
+            f"⏳ {unresolved} of {total} complaints ({unresolved_share:.0f}%) remain unresolved "
+            f"({kpis['pending']} pending, {kpis['in_progress']} in progress). "
+            f"The resolution rate is {kpis['resolution_rate']:.1f}%."
+        )
+    else:
+        insights.append(
+            f"✅ All {total} complaints have been resolved (resolution rate 100.0%).")
+
+    # ----- Insight 4: average resolution time ------------------------
+    # An average from a single complaint is not meaningful, so we need at least 2.
+    if kpis["complaints_used_for_average"] >= MIN_RESOLVED_FOR_AVERAGE:
+        insights.append(
+            f"⏱️ Resolved complaints took {kpis['average_resolution_time']} on average to resolve "
+            f"(based on {kpis['complaints_used_for_average']} resolved complaints)."
+        )
+
+    # ----- Insight 5: high-priority complaints ------------------------
+    high_complaints = df[df["priority"] == "High"]
+    high_total = len(high_complaints)
+
+    if high_total >= 1:
+        high_unresolved = high_complaints[high_complaints["status"] != "Resolved"]
+        unresolved_count = len(high_unresolved)
+
+        if unresolved_count >= 1:
+            text = (
+                f"🚨 {unresolved_count} of {high_total} high-priority complaint(s) remain unresolved "
+                f"and should be monitored closely."
+            )
+            # Where are the high-priority complaints concentrated?
+            high_by_category = high_complaints["category"].fillna(
+                "Unknown").value_counts()
+            if high_by_category.iloc[0] >= 2:
+                text += (
+                    f" High-priority complaints are most frequent in {high_by_category.index[0]} "
+                    f"({high_by_category.iloc[0]} of {high_total})."
+                )
+            insights.append(text)
+        else:
+            insights.append(
+                f"✅ All {high_total} high-priority complaint(s) have been resolved.")
+
+    # ----- Insight 6: sentiment from the AI analysis ------------------
+    analysed = sum(sentiment_counts.values())
+    negative = sentiment_counts.get("Negative", 0)
+
+    if analysed >= MIN_COMPLAINTS_FOR_INSIGHTS and negative >= 1:
+        insights.append(
+            f"😟 The AI sentiment analysis classifies {negative} of {analysed} complaints "
+            f"({negative / analysed * 100:.0f}%) as negative in tone."
+        )
+
+    return insights
+
+
+# NEW: draws the "AI Management Insights" section.
+def show_ai_management_insights(complaints):
+    """Show the AI-generated management insights for the administrator."""
+
+    # SECURITY CHECK: only administrators may see this section.
+    if st.session_state.role != "Administrator":
+        st.error("⛔ Only administrators can view management insights.")
+        return
+
+    st.markdown("#### 🧠 AI Management Insights")
+    st.caption(
+        "AI-generated observations, produced by simple rules applied to the current complaint data. "
+        "They support decision making only. Nothing is changed or sent automatically."
+    )
+
+    if not complaints:
+        st.info(
+            "Management insights will appear here once complaints have been submitted.")
+        return
+
+    # Sentiment comes from the saved AI analysis of each complaint.
+    sentiment_counts = get_sentiment_counts(complaints)
+    insights = generate_management_insights(complaints, sentiment_counts)
+
+    if not insights:
+        st.info(
+            f"There is not enough data yet. Insights appear once there are at least "
+            f"{MIN_COMPLAINTS_FOR_INSIGHTS} complaints."
+        )
+    else:
+        # One bullet point per insight.
+        st.markdown("\n".join(f"- {text}" for text in insights))
+
+    # Transparency: explain how the insights are produced.
+    with st.expander("How are these insights generated?"):
+        st.markdown(
+            f"""
+            Each insight comes from a simple rule applied to the complaints in the database.
+            A rule is skipped when there is not enough data.
+
+            - **Most reported category:** shown when the top category has at least 2 complaints.
+            - **Recurring theme:** shown when a keyword theme is mentioned in at least {RECURRING_THRESHOLD} complaints.
+            - **Unresolved complaints and resolution rate:** calculated from the Pending, In Progress and Resolved counts.
+            - **Average resolution time:** shown when at least {MIN_RESOLVED_FOR_AVERAGE} complaints have been resolved.
+            - **High-priority complaints:** based on the priority set on each complaint.
+            - **Negative sentiment:** based on the AI sentiment analysis saved for each complaint.
+
+            Insights need at least {MIN_COMPLAINTS_FOR_INSIGHTS} complaints. They describe patterns in the current data
+            and are not predictions.
+            """
+        )
+
+
+# Draws the "Analytics Overview" KPI cards (and the sections below them).
 def show_analytics_overview():
     """Show the KPI metric cards for the administrator."""
 
@@ -1122,9 +1517,17 @@ def show_analytics_overview():
         st.caption(
             "Average resolution time will appear once a complaint has been resolved.")
 
-    # NEW: the charts go directly below the KPI cards.
+    # The charts go directly below the KPI cards.
     st.write("")
     show_analytics_charts(complaints)
+
+    # The Recurring Issues section goes below the charts.
+    st.write("")
+    show_recurring_issues(complaints)
+
+    # NEW: the AI Management Insights section goes at the end.
+    st.write("")
+    show_ai_management_insights(complaints)
 
 
 # ---------------------------------------------------------------
@@ -1412,7 +1815,7 @@ def show_admin_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Administrator Dashboard")
 
-    # KPI cards, with the charts directly below them.
+    # KPI cards, charts, recurring issues and AI management insights.
     show_analytics_overview()
 
     st.divider()
@@ -1422,16 +1825,12 @@ def show_admin_dashboard():
 
     st.divider()
 
-    # The remaining admin features are still placeholders.
-    col1, col2, col3 = st.columns(3)
+    # Two placeholders remain for later stages.
+    col1, col2 = st.columns(2)
     with col1:
-        # CHANGED: the charts are done, so this card now describes what is left.
-        placeholder_section("🔁", "Recurring Issues",
-                            "The most common complaint topics and repeated problems will be analysed here.")
-    with col2:
         placeholder_section(
             "👥", "User Management", "Administrators will manage student and staff accounts.")
-    with col3:
+    with col2:
         placeholder_section(
             "📄", "Reports", "Administrators will generate service-quality reports.")
 
@@ -1457,7 +1856,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 10")
+    st.caption("Final-Year Project Prototype • Version 12")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING
