@@ -1,17 +1,18 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 2 (Authentication foundation)
+# Decision Support System  -  VERSION 3 (SQLite database foundation)
 #
 # This version adds:
-#   - a login page with 3 demo accounts
-#   - role storage in st.session_state
-#   - a different placeholder dashboard for each role
-#   - a logout button
-# There is still NO database, AI or analytics.
+#   - the SQLite database is created automatically when the app starts
+# Login still uses the demo accounts below. It will switch to the
+# database in a later stage.
+# There is still NO AI or analytics.
 # ---------------------------------------------------------------
 
 import streamlit as st  # Streamlit turns this Python file into a web app
+
+from utils.database import initialize_database  # NEW: our database helper
 
 # ---------------------------------------------------------------
 # 1. PAGE SETTINGS
@@ -24,7 +25,23 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------
-# 2. CUSTOM STYLING (CSS)  -  unchanged from Version 1
+# 1b. DATABASE SETUP  (NEW)
+# ---------------------------------------------------------------
+# @st.cache_resource makes Streamlit run this function only ONCE per
+# server start instead of on every click. Inside, initialize_database()
+# creates the tables and demo users if they do not exist yet.
+
+
+@st.cache_resource(show_spinner=False)
+def setup_database():
+    initialize_database()
+    return True
+
+
+setup_database()
+
+# ---------------------------------------------------------------
+# 2. CUSTOM STYLING (CSS)
 # ---------------------------------------------------------------
 st.markdown(
     """
@@ -80,8 +97,8 @@ st.markdown(
 # ---------------------------------------------------------------
 # A dictionary stores each account. The KEY is the email address and
 # the VALUE holds the password, display name and role.
-# NOTE: Plain-text passwords are fine for a demo only. Later, the
-# accounts will move into the SQLite database.
+# NOTE: Plain-text passwords are fine for a demo only. In a later
+# stage, login will check the database instead.
 DEMO_USERS = {
     "student@university.edu": {
         "password": "student123",
@@ -211,7 +228,7 @@ def show_login_page():
                 """
             )
 
-    # The three role cards from Version 1 stay on the login page.
+    # The three role cards stay on the login page.
     st.write("")
     st.subheader("Who Uses This System?")
     col_student, col_staff, col_admin = st.columns(3)
@@ -340,7 +357,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 2")
+    st.caption("Final-Year Project Prototype • Version 3")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING
