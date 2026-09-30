@@ -1,20 +1,21 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 7 (Admin: Complaint Assignment)
+# Decision Support System  -  VERSION 8 (AI analysis integrated)
 #
-# This version adds the Administrator "Complaint Assignment" section:
-#   - see ALL complaints with their assigned staff member
-#   - select a complaint and view its details
-#   - assign it (or reassign it) to a Staff user
+# This version adds an "AI Complaint Analysis" section to the
+# complaint views for Students, Staff and Administrators:
+#   - the local AI engine (utils/ai_engine.py) analyses each complaint
+#   - the result is saved ONCE in the ai_analysis table and reused
+#   - the AI priority is only a RECOMMENDATION (it never changes the
+#     priority stored on the complaint)
 # Login still uses the demo accounts below.
-# There is still NO AI or analytics.
 # ---------------------------------------------------------------
 
 import streamlit as st  # Streamlit turns this Python file into a web app
 import pandas as pd     # Pandas builds the complaint tables
 
-# CHANGED: we now also import get_users_by_role and assign_complaint
+# CHANGED: we now also import get_ai_analysis and save_ai_analysis
 from utils.database import (
     initialize_database,
     get_user_by_email,
@@ -27,7 +28,10 @@ from utils.database import (
     assign_complaint,
     add_response,
     get_responses,
+    get_ai_analysis,
+    save_ai_analysis,
 )
+from utils.ai_engine import analyze_complaint  # NEW: the local AI engine
 
 # ---------------------------------------------------------------
 # 1. PAGE SETTINGS
@@ -274,6 +278,129 @@ def handle_complaint_submit():
     )
 
 
+# NEW: get the AI analysis for a complaint (from the database, or create it once).
+def get_or_create_ai_analysis(complaint):
+    """Return the AI analysis for a complaint as a dictionary.
+
+    Step 1: look in the ai_analysis table. If an analysis is already saved,
+            use it. (We do NOT run the AI again.)
+    Step 2: if nothing is saved yet, run the AI engine on the complaint,
+            save the result under this complaint's id, then load it.
+
+    IMPORTANT: only call this AFTER you have checked that the current user
+    is allowed to see this complaint."""
+
+    complaint_id = complaint["id"]
+
+    # Step 1: already analysed?
+    analysis = get_ai_analysis(complaint_id)
+    if analysis is not None:
+        return analysis
+
+    # Step 2: run the local AI engine. We pass the student's name so the
+    # suggested response can start with "Dear <name>,".
+    student = get_user_by_id(complaint["student_id"])
+    student_name = student["name"] if student else None
+
+    result = analyze_complaint(
+        complaint["description"],
+        title=complaint["title"],
+        student_name=student_name,
+    )
+
+    # Save the result. The complaint_id links it to the correct complaint.
+    save_ai_analysis(
+        complaint_id=complaint_id,
+        category=result["category"],
+        sentiment=result["sentiment"],
+        priority=result["priority"],
+        confidence=result["confidence"],
+        summary=result["summary"],
+        suggested_response=result["suggested_response"],
+    )
+
+    # Load the saved row so what we display is exactly what is stored.
+    return get_ai_analysis(complaint_id)
+
+
+# NEW: draws the "AI Complaint Analysis" section.
+def show_ai_analysis(complaint, viewer):
+    """Display the AI analysis of a complaint.
+
+    complaint -> the complaint (a dictionary) the user is allowed to see
+    viewer    -> "student", "staff" or "admin". This decides what is shown:
+                   student -> analysis only (the suggested response is a
+                              draft for staff, so students do not see it)
+                   staff   -> analysis + an editable AI suggested response
+                   admin   -> analysis + a read-only AI suggested response"""
+
+    analysis = get_or_create_ai_analysis(complaint)
+
+    st.markdown("##### 🤖 AI Complaint Analysis")
+
+    if analysis is None:
+        st.warning(
+            "The AI analysis is not available for this complaint right now.")
+        return
+
+    st.caption(
+        "Generated automatically by the local AI engine. "
+        "It supports decision making and does not change the complaint itself."
+    )
+
+    # Confidence is stored as a number from 0 to 100.
+    confidence = analysis["confidence"]
+    confidence_text = f"{confidence:.0f}%" if confidence is not None else "N/A"
+
+    # Four small metric cards side by side.
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Category", analysis["category"])
+    c2.metric("Sentiment", analysis["sentiment"])
+    c3.metric("AI Recommended Priority", analysis["priority"])
+    c4.metric("Confidence", confidence_text)
+
+    # The complaint's own priority is NOT changed by the AI. We show it here
+    # so the reader can compare it with the AI recommendation.
+    st.caption(
+        f"Priority set on the complaint (unchanged): {complaint['priority']}")
+
+    st.markdown("**AI Summary**")
+    st.info(analysis["summary"])
+
+    # The suggested response is only for Staff and Administrators.
+    if viewer in ("staff", "admin"):
+        st.markdown(
+            "**🤖 AI-Generated Suggested Response** (draft only, not sent)")
+
+        if viewer == "staff":
+            # Editable, so staff can adjust the wording and copy it.
+            # Nothing typed here is saved or sent anywhere.
+            st.text_area(
+                "AI suggested response",
+                value=analysis["suggested_response"],
+                height=280,
+                key=f"ai_suggestion_staff_{complaint['id']}",
+                label_visibility="collapsed",
+            )
+            st.caption(
+                "This is an AI-generated suggestion. It has NOT been sent to the student. "
+                "Review it, edit it if needed, and copy the text into the response box below."
+            )
+        else:
+            # Administrators can read it but not edit it.
+            st.text_area(
+                "AI suggested response",
+                value=analysis["suggested_response"],
+                height=280,
+                disabled=True,
+                key=f"ai_suggestion_admin_{complaint['id']}",
+                label_visibility="collapsed",
+            )
+            st.caption(
+                "This is an AI-generated suggestion for staff. It has NOT been sent to the student."
+            )
+
+
 def show_complaint_details(complaint_id, student_id):
     """Display one complaint in full, but ONLY if it belongs to this student.
 
@@ -331,6 +458,9 @@ def show_complaint_details(complaint_id, student_id):
         disabled=True,
         key=f"description_box_{complaint['id']}",
     )
+
+    # ----- NEW: AI analysis (ownership was already checked above) ---
+    show_ai_analysis(complaint, viewer="student")
 
     # ----- Staff responses ------------------------------------------
     st.markdown("##### 💬 Staff Responses")
@@ -443,6 +573,10 @@ def show_staff_complaint_details(complaint_id, staff_id):
         key=f"staff_description_box_{complaint['id']}",
     )
 
+    # ----- NEW: AI analysis + suggested response --------------------
+    # (the assignment was already checked above)
+    show_ai_analysis(complaint, viewer="staff")
+
     # ----- Update Status -------------------------------------------
     st.markdown("##### 🔄 Update Status")
     col_select, col_button = st.columns([3, 1])
@@ -505,7 +639,6 @@ def show_staff_complaint_details(complaint_id, staff_id):
             st.divider()
 
 
-# NEW: runs when the administrator presses the Assign / Reassign button.
 def handle_assignment(complaint_id):
     """Assign (or reassign) a complaint to the staff member chosen in the dropdown.
     Used as a CALLBACK, so it runs BEFORE the page is redrawn and the page
@@ -553,7 +686,6 @@ def handle_assignment(complaint_id):
         )
 
 
-# NEW: the whole "Complaint Assignment" section of the Administrator dashboard.
 def show_admin_assignment_section():
     """Show all complaints, the selected complaint's details, and the
     controls to assign or reassign it to a Staff user."""
@@ -659,6 +791,9 @@ def show_admin_assignment_section():
         disabled=True,
         key=f"admin_description_box_{complaint['id']}",
     )
+
+    # ----- NEW: AI analysis (the administrator role was checked above) ---
+    show_ai_analysis(complaint, viewer="admin")
 
     # ----- Part 4: assign or reassign --------------------------------
     st.markdown("##### 👤 Assign to Staff")
@@ -818,6 +953,8 @@ def show_login_page():
 # ---------------------------------------------------------------
 # 7. ROLE DASHBOARDS
 # ---------------------------------------------------------------
+# CHANGED: the AI Analysis placeholder card was removed from this
+# dashboard, because the analysis now appears inside Complaint Details.
 def show_student_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Student Dashboard")
@@ -906,16 +1043,9 @@ def show_student_dashboard():
             format_func=lambda cid: f"#{cid} - {titles_by_id[cid]}",
         )
 
-        # This function loads the complaint, double-checks ownership and shows it.
+        # This function loads the complaint, double-checks ownership and shows it
+        # (including the AI analysis).
         show_complaint_details(selected_id, student["id"])
-
-    st.divider()
-
-    # ----- Section 3: still a placeholder ---------------------------
-    placeholder_section(
-        "🤖", "AI Analysis",
-        "Students will view the AI analysis of their complaints (category, sentiment and summary).",
-    )
 
 
 def show_staff_dashboard():
@@ -992,16 +1122,15 @@ def show_staff_dashboard():
     )
 
     # This function double-checks the assignment, then shows details,
-    # the status control, the response form and previous responses.
+    # the AI analysis, the status control, the response form and previous responses.
     show_staff_complaint_details(selected_id, staff["id"])
 
 
-# CHANGED: the Administrator dashboard now starts with Complaint Assignment.
 def show_admin_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Administrator Dashboard")
 
-    # The real feature: view all complaints and assign them to staff.
+    # The real feature: view all complaints, see the AI analysis, and assign to staff.
     show_admin_assignment_section()
 
     st.divider()
@@ -1040,7 +1169,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 7")
+    st.caption("Final-Year Project Prototype • Version 8")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING
