@@ -1,7 +1,7 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 13 (Admin: Reports + User Management)
+# Decision Support System  -  VERSION 14 (UI Polish)
 #
 # This version adds an "AI Management Insights" section to the
 # Administrator analytics. It turns the complaint data into a few
@@ -68,46 +68,367 @@ setup_database()
 st.markdown(
     """
     <style>
-        /* Big banner at the top of the page */
-        .hero {
-            background: linear-gradient(135deg, #1e3a8a, #2563eb);
-            padding: 2.2rem 2rem;
-            border-radius: 14px;
-            color: white;
-            margin-bottom: 1.5rem;
+        :root {
+            --navy: #0f2f52;
+            --navy-2: #123b63;
+            --blue: #2563eb;
+            --blue-mid: #1d5a9a;
+            --blue-soft: #e8f0fb;
+            --ink: #1e293b;
+            --muted: #64748b;
+            --line: #e2e8f0;
+            --bg: #dbe5ee;
+            --indigo: #4f46e5;
         }
-        .hero h1 {
-            color: white;
-            font-size: 2rem;
-            margin: 0 0 0.6rem 0;
+
+        /* ---------- Page ---------- */
+        .stApp {
+            background: var(--bg);
+            color: var(--ink);
+            font-family: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        #MainMenu, footer { visibility: hidden; }
+        header[data-testid="stHeader"] { background: transparent; }
+        .block-container {
+            padding-top: 1.6rem;
+            padding-bottom: 2rem;
+            max-width: 1180px;
+        }
+        hr { border-color: var(--line); }
+
+        /* ---------- Headings ---------- */
+        .stApp h1, .stApp h2, .stApp h3 {
+            color: var(--navy-2);
+            letter-spacing: -0.01em;
+        }
+        .stApp h2 { font-size: 1.45rem; font-weight: 700; }
+        .stApp h3 { font-size: 1.15rem; font-weight: 700; }
+        div[data-testid="stMarkdownContainer"] h4 {
+            font-size: 1.02rem;
+            font-weight: 700;
+            color: var(--navy-2);
+            border-left: 4px solid var(--blue);
+            padding-left: 0.65rem;
+            margin: 1.1rem 0 0.6rem 0;
+            line-height: 1.3;
+        }
+        div[data-testid="stMarkdownContainer"] h5 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--navy-2);
+            margin-top: 1rem;
+        }
+
+        /* ---------- Compact header banner ---------- */
+        .hero {
+            background: linear-gradient(120deg, var(--navy) 0%, var(--blue-mid) 100%);
+            padding: 0.95rem 1.3rem;
+            border-radius: 14px;
+            color: #ffffff;
+            margin: 0 0 1rem 0;
+            box-shadow: 0 6px 18px rgba(15, 47, 82, 0.16);
+        }
+        .hero .hero-eyebrow {
+            font-size: 0.7rem;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: #b9d3f0;
+            font-weight: 600;
+            margin-bottom: 0.15rem;
+        }
+        .hero .hero-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #ffffff;
             line-height: 1.3;
         }
         .hero p {
-            color: #dbeafe;
-            font-size: 1.05rem;
-            margin: 0;
+            color: #d6e6f7;
+            font-size: 0.8rem;
+            margin: 0.25rem 0 0 0;
+            line-height: 1.4;
         }
 
-        /* Cards for roles and dashboard sections */
+        /* ---------- Login page ---------- */
+        .login-brand {
+            text-align: center;
+            padding: 0.2rem 0 0.4rem 0;
+        }
+        .login-brand .brand-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: var(--blue-soft);
+            font-size: 1.7rem;
+            margin-bottom: 0.4rem;
+        }
+        .login-brand h2 {
+            color: var(--navy-2);
+            font-size: 1.5rem;
+            margin: 0;
+            line-height: 1.25;
+        }
+        .login-brand p {
+            color: var(--muted);
+            font-size: 0.88rem;
+            margin: 0.35rem 0 0 0;
+        }
+        .login-head {
+            text-align: center;
+            margin: 0.3rem 0 0.6rem 0;
+        }
+        .login-card-title {
+            color: var(--navy-2);
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .login-card-subtitle {
+            color: var(--muted);
+            font-size: 0.84rem;
+            margin-top: 0.15rem;
+        }
+
+        /* Every st.form becomes a clean white card
+           (this makes the login form itself the login card). */
+        div[data-testid="stForm"] {
+            background: #ffffff;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 1.2rem 1.35rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        /* ---------- Cards ---------- */
         .card {
             background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-top: 5px solid #2563eb;
-            border-radius: 12px;
-            padding: 1.4rem;
+            border: 1px solid var(--line);
+            border-top: 4px solid var(--blue-mid);
+            border-radius: 14px;
+            padding: 1rem 1.15rem;
             height: 100%;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            box-shadow: 0 5px 18px rgba(15, 23, 42, 0.055);
         }
         .card h3 {
-            color: #1e3a8a;
-            margin-top: 0;
+            color: var(--navy-2);
+            margin: 0 0 0.35rem 0;
+            font-size: 1rem;
         }
         .card p, .card li {
-            color: #374151;
-            font-size: 0.95rem;
+            color: #475569;
+            font-size: 0.87rem;
         }
         .card ul {
-            padding-left: 1.2rem;
+            margin: 0.4rem 0 0 0;
+            padding-left: 1.1rem;
+        }
+        .section-kicker {
+            color: var(--blue-mid);
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.25rem;
+        }
+
+        /* ---------- Inputs ---------- */
+        div[data-testid="stTextInput"] label,
+        div[data-testid="stTextArea"] label,
+        div[data-testid="stSelectbox"] label {
+            color: #334155;
+            font-weight: 600;
+        }
+        div[data-baseweb="input"],
+        div[data-baseweb="textarea"],
+        div[data-baseweb="select"] > div {
+            border-radius: 10px;
+        }
+
+        /* ---------- Buttons ---------- */
+        div.stButton > button,
+        div[data-testid="stFormSubmitButton"] button,
+        div[data-testid="stDownloadButton"] button {
+            background: var(--navy-2);
+            color: #ffffff;
+            border: 1px solid var(--navy-2);
+            border-radius: 10px;
+            font-weight: 600;
+            min-height: 2.6rem;
+            transition: background 0.15s ease, box-shadow 0.15s ease;
+        }
+        div.stButton > button p,
+        div[data-testid="stFormSubmitButton"] button p,
+        div[data-testid="stDownloadButton"] button p {
+            color: #ffffff;
+        }
+        div.stButton > button:hover,
+        div[data-testid="stFormSubmitButton"] button:hover,
+        div[data-testid="stDownloadButton"] button:hover {
+            background: var(--blue-mid);
+            border-color: var(--blue-mid);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(18, 59, 99, 0.22);
+        }
+        div.stButton > button:disabled {
+            opacity: 0.55;
+        }
+
+        /* ---------- Sidebar ---------- */
+        section[data-testid="stSidebar"] {
+            background: #ffffff;
+            border-right: 1px solid var(--line);
+        }
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--navy-2);
+            margin-bottom: 0.3rem;
+        }
+        .sidebar-brand-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            background: var(--blue-soft);
+            font-size: 1.1rem;
+        }
+        .role-pill {
+            display: inline-block;
+            background: var(--blue-soft);
+            color: #1d4f91;
+            border-radius: 999px;
+            padding: 0.12rem 0.65rem;
+            font-size: 0.74rem;
+            font-weight: 700;
+            margin-bottom: 0.2rem;
+        }
+
+        /* ---------- Compact KPI metric cards ---------- */
+        div[data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid var(--line);
+            border-top: 3px solid var(--blue);
+            border-radius: 12px;
+            padding: 0.6rem 0.85rem;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+        }
+        div[data-testid="stMetricLabel"] p {
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        div[data-testid="stMetricValue"] {
+            color: var(--navy);
+            font-size: 1.45rem;
+            font-weight: 700;
+        }
+        div[data-testid="stMetricValue"] > div {
+            white-space: normal;
+            overflow-wrap: anywhere;
+            line-height: 1.2;
+        }
+
+        /* ---------- Tabs (admin dashboard) ---------- */
+        div[data-baseweb="tab-list"] {
+            gap: 0.25rem;
+            border-bottom: 1px solid var(--line);
+        }
+        button[data-baseweb="tab"] {
+            font-weight: 600;
+            color: var(--muted);
+            padding: 0.55rem 1rem;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: var(--navy-2);
+        }
+        div[data-baseweb="tab-highlight"] {
+            background-color: var(--blue);
+            height: 3px;
+        }
+
+        /* ---------- Tables, expanders, alerts ---------- */
+        div[data-testid="stDataFrame"] {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        div[data-testid="stExpander"] details {
+            background: #ffffff;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+        }
+        div[data-testid="stAlert"] {
+            border-radius: 10px;
+        }
+
+        /* ---------- Status / priority badges ---------- */
+        .badge {
+            display: inline-block;
+            padding: 0.12rem 0.65rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.4;
+            border: 1px solid transparent;
+        }
+        .badge-pending  { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+        .badge-progress { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+        .badge-resolved { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        .badge-high     { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+        .badge-medium   { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+        .badge-low      { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        .badge-neutral  { background: #111c2d; color: #475569; border-color: #e2e8f0; }
+
+        /* ---------- AI Complaint Analysis header ---------- */
+        .ai-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.6rem;
+            background: linear-gradient(90deg, #eef2ff 0%, #f8fafc 100%);
+            border: 1px solid #e0e7ff;
+            border-left: 4px solid var(--indigo);
+            border-radius: 10px;
+            padding: 0.6rem 0.9rem;
+            margin: 1.2rem 0 0.6rem 0;
+        }
+        .ai-header-title {
+            color: #312e81;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        .ai-chip {
+            background: var(--indigo);
+            color: #ffffff;
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border-radius: 999px;
+            padding: 0.15rem 0.6rem;
+        }
+
+        /* ---------- Footer ---------- */
+        .app-footer {
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.78rem;
+            padding: 1.2rem 0 0.4rem 0;
+        }
+
+        /* ---------- Small screens ---------- */
+        @media (max-width: 768px) {
+            .block-container { padding: 1rem 0.8rem 2rem 0.8rem; }
+            .hero { padding: 0.8rem 1rem; }
+            .hero .hero-title { font-size: 1.08rem; }
+            .login-brand h2 { font-size: 1.25rem; }
         }
     </style>
     """,
@@ -254,12 +575,13 @@ def logout():
 
 
 def show_hero(message):
-    """Show the blue banner with the project title and a short message."""
+    """Show the compact blue banner with the project title and a short message."""
     st.markdown(
         f"""
         <div class="hero">
-            <h1>AI-Enhanced Complaint Management and Service Quality Decision Support System</h1>
-            <p>{message}</p>
+            <div class="hero-eyebrow">University Complaint Management System</div>
+            <div class="hero-title">{message}</div>
+            <p>AI-Enhanced Complaint Management and Service Quality Decision Support System</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -278,6 +600,29 @@ def placeholder_section(icon, title, description):
         """,
         unsafe_allow_html=True,
     )
+
+
+def status_badge(status):
+    """Return a small coloured HTML badge for a complaint status (display only)."""
+    from html import escape
+    css_class = {
+        "Pending": "badge-pending",
+        "In Progress": "badge-progress",
+        "Resolved": "badge-resolved",
+    }.get(status, "badge-neutral")
+    icon = STATUS_ICONS.get(status, "⚪")
+    return f'<span class="badge {css_class}">{icon} {escape(str(status))}</span>'
+
+
+def priority_badge(priority):
+    """Return a small coloured HTML badge for a complaint priority (display only)."""
+    from html import escape
+    css_class = {
+        "High": "badge-high",
+        "Medium": "badge-medium",
+        "Low": "badge-low",
+    }.get(priority, "badge-neutral")
+    return f'<span class="badge {css_class}">{escape(str(priority))}</span>'
 
 
 def handle_complaint_submit():
@@ -390,7 +735,15 @@ def show_ai_analysis(complaint, viewer):
 
     analysis = get_or_create_ai_analysis(complaint)
 
-    st.markdown("##### 🤖 AI Complaint Analysis")
+    st.markdown(
+        """
+        <div class="ai-header">
+            <div class="ai-header-title">🤖 AI Complaint Analysis</div>
+            <span class="ai-chip">AI-generated</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if analysis is None:
         st.warning(
@@ -497,8 +850,10 @@ def show_complaint_details(complaint_id, student_id):
         st.markdown(f"**Category:** {complaint['category']}")
         st.markdown(f"**Location:** {location}")
     with right:
-        st.markdown(f"**Priority:** {complaint['priority']}")
-        st.markdown(f"**Current Status:** {status_text}")
+        st.markdown(
+            f"**Priority:** {priority_badge(complaint['priority'])}", unsafe_allow_html=True)
+        st.markdown(
+            f"**Current Status:** {status_badge(status)}", unsafe_allow_html=True)
         st.markdown(f"**Created Date:** {complaint['created_at']}")
         st.markdown(f"**Assigned Staff:** {assigned_to}")
         st.markdown(f"**Resolved Date:** {resolved_date}")
@@ -614,8 +969,10 @@ def show_staff_complaint_details(complaint_id, staff_id):
         st.markdown(f"**Category:** {complaint['category']}")
         st.markdown(f"**Location:** {location}")
     with right:
-        st.markdown(f"**Priority:** {complaint['priority']}")
-        st.markdown(f"**Status:** {status_text}")
+        st.markdown(
+            f"**Priority:** {priority_badge(complaint['priority'])}", unsafe_allow_html=True)
+        st.markdown(
+            f"**Status:** {status_badge(status)}", unsafe_allow_html=True)
         st.markdown(f"**Created Date:** {complaint['created_at']}")
         st.markdown(f"**Student:** {student_text}")
 
@@ -833,8 +1190,10 @@ def show_admin_assignment_section():
         st.markdown(f"**Category:** {complaint['category']}")
         st.markdown(f"**Location:** {location}")
     with right:
-        st.markdown(f"**Priority:** {complaint['priority']}")
-        st.markdown(f"**Status:** {status_text}")
+        st.markdown(
+            f"**Priority:** {priority_badge(complaint['priority'])}", unsafe_allow_html=True)
+        st.markdown(
+            f"**Status:** {status_badge(status)}", unsafe_allow_html=True)
         st.markdown(f"**Created Date:** {complaint['created_at']}")
         st.markdown(f"**Currently Assigned To:** {current_staff_text}")
 
@@ -1552,17 +1911,36 @@ def show_analytics_overview():
 # 6. LOGIN PAGE
 # ---------------------------------------------------------------
 def show_login_page():
-    show_hero(
-        "Welcome! This system helps the university receive, track and resolve "
-        "complaints, and supports better service-quality decisions. "
-        "Please log in to continue."
+    """Show the polished public landing/login page."""
+
+    # Compact project identity instead of the oversized dashboard hero.
+    st.markdown(
+        """
+        <div class="login-brand">
+            <div class="brand-icon">🎓</div>
+            <h2>University Complaint Management System</h2>
+            <p>AI-enhanced complaint handling and service-quality decision support</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    # Three columns: the middle one holds the login form, so it appears centred.
-    left, middle, right = st.columns([1, 1.4, 1])
+    st.markdown('<div class="section-kicker">Secure access</div>',
+                unsafe_allow_html=True)
+
+    # Three columns: the middle one holds the login card, so it remains centred.
+    left, middle, right = st.columns([1, 1.25, 1])
 
     with middle:
-        st.subheader("🔐 Login")
+        st.markdown(
+            """
+            <div class="login-head">
+                <div class="login-card-title">🔐 Sign in to your dashboard</div>
+                <div class="login-card-subtitle">Use your university account to access the features available for your role.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         # st.form groups the inputs so the app only reacts when the
         # button is pressed (not on every keystroke).
@@ -1570,23 +1948,19 @@ def show_login_page():
             email = st.text_input("Email", placeholder="name@university.edu")
             password = st.text_input("Password", type="password")
             submitted = st.form_submit_button(
-                "Login", use_container_width=True)
+                "Login to Dashboard", use_container_width=True)
 
-        # This block runs only after the Login button is pressed.
         if submitted:
             user = check_login(email, password)
             if user:
-                # Save the login details in session_state...
                 st.session_state.logged_in = True
                 st.session_state.user_email = user["email"]
                 st.session_state.user_name = user["name"]
                 st.session_state.role = user["role"]
-                # ...then re-run the app so the dashboard appears.
                 st.rerun()
             else:
                 st.error("Incorrect email or password. Please try again.")
 
-        # Helpful for demonstrations: show the demo accounts.
         with st.expander("Demo accounts (for demonstration only)"):
             st.markdown(
                 """
@@ -1598,9 +1972,11 @@ def show_login_page():
                 """
             )
 
-    # The three role cards stay on the login page.
     st.write("")
+    st.markdown('<div class="section-kicker">System users</div>',
+                unsafe_allow_html=True)
     st.subheader("Who Uses This System?")
+
     col_student, col_staff, col_admin = st.columns(3)
 
     with col_student:
@@ -2146,7 +2522,11 @@ def show_admin_dashboard():
 # 8. SIDEBAR
 # ---------------------------------------------------------------
 with st.sidebar:
-    st.title("🎓 Complaint System")
+    st.markdown(
+        '<div class="sidebar-brand"><span class="sidebar-brand-icon">🎓</span>'
+        '<span>Complaint System</span></div>',
+        unsafe_allow_html=True,
+    )
     st.caption(
         "AI-Enhanced Complaint Management and Service Quality Decision Support System")
     st.divider()
@@ -2154,7 +2534,10 @@ with st.sidebar:
     if st.session_state.logged_in:
         # Show who is logged in.
         st.markdown(f"**👤 {st.session_state.user_name}**")
-        st.caption(f"Role: {st.session_state.role}")
+        st.markdown(
+            f'<span class="role-pill">{st.session_state.role}</span>',
+            unsafe_allow_html=True,
+        )
         st.caption(st.session_state.user_email)
 
         # on_click=logout runs our logout() function when the button is pressed.
@@ -2163,7 +2546,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 13")
+    st.caption("Final-Year Project Prototype • Version 14")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING
