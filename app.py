@@ -1,26 +1,31 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 5 (Student: Details and Tracking)
+# Decision Support System  -  VERSION 7 (Admin: Complaint Assignment)
 #
-# This version adds:
-#   - students can select one of THEIR complaints and see its full details
-#   - students can read the staff responses for that complaint
+# This version adds the Administrator "Complaint Assignment" section:
+#   - see ALL complaints with their assigned staff member
+#   - select a complaint and view its details
+#   - assign it (or reassign it) to a Staff user
 # Login still uses the demo accounts below.
 # There is still NO AI or analytics.
 # ---------------------------------------------------------------
 
 import streamlit as st  # Streamlit turns this Python file into a web app
-import pandas as pd     # Pandas builds the "My Complaints" table
+import pandas as pd     # Pandas builds the complaint tables
 
-# CHANGED: we now also import get_complaint_by_id, get_responses, get_user_by_id
+# CHANGED: we now also import get_users_by_role and assign_complaint
 from utils.database import (
     initialize_database,
     get_user_by_email,
     get_user_by_id,
+    get_users_by_role,
     add_complaint,
     get_complaints,
     get_complaint_by_id,
+    update_complaint_status,
+    assign_complaint,
+    add_response,
     get_responses,
 )
 
@@ -134,6 +139,9 @@ COMPLAINT_CATEGORIES = [
 ]
 COMPLAINT_PRIORITIES = ["Low", "Medium", "High"]
 
+# The statuses a staff member can choose from.
+STATUS_OPTIONS = ["Pending", "In Progress", "Resolved"]
+
 # The starting value of every field in the complaint form.
 # The keys (left side) are also the widget keys used in the form below.
 COMPLAINT_FORM_DEFAULTS = {
@@ -144,7 +152,7 @@ COMPLAINT_FORM_DEFAULTS = {
     "complaint_priority": "Medium",
 }
 
-# NEW: a small coloured icon shown next to each status.
+# A small coloured icon shown next to each status.
 STATUS_ICONS = {
     "Pending": "🟡",
     "In Progress": "🔵",
@@ -266,7 +274,6 @@ def handle_complaint_submit():
     )
 
 
-# NEW: shows the full details and staff responses of ONE complaint.
 def show_complaint_details(complaint_id, student_id):
     """Display one complaint in full, but ONLY if it belongs to this student.
 
@@ -338,6 +345,367 @@ def show_complaint_details(complaint_id, student_id):
             st.markdown(f"**{staff_name}** • {reply['created_at']}")
             st.write(reply["response"])
             st.divider()
+
+
+def handle_status_update(complaint_id, staff_id):
+    """Change a complaint's status. Used as a CALLBACK for the Update Status button.
+
+    Because a callback runs BEFORE the page is redrawn, the page will already
+    show the new status. The result message is saved in session_state and
+    displayed after the redraw.
+
+    complaint_id -> the complaint being updated
+    staff_id     -> the logged-in staff member's database id"""
+
+    # SECURITY CHECK (again): only the assigned staff member may change it.
+    complaint = get_complaint_by_id(complaint_id)
+    if complaint is None or complaint["assigned_staff"] != staff_id:
+        st.session_state.staff_feedback = (
+            "error", "⛔ You are not allowed to update this complaint."
+        )
+        return
+
+    # Read the status the staff member picked in the dropdown.
+    # The dropdown's key is built from the complaint id (see below).
+    new_status = st.session_state[f"status_select_{complaint_id}"]
+    old_status = complaint["status"]
+
+    if new_status == old_status:
+        st.session_state.staff_feedback = (
+            "info", f"The status is already {old_status}. Nothing was changed."
+        )
+        return
+
+    # update_complaint_status() saves the new status AND keeps resolved_at consistent:
+    #   -> becomes 'Resolved'        : resolved_at = current date/time
+    #   -> moves away from 'Resolved': resolved_at is cleared (set to NULL)
+    update_complaint_status(complaint_id, new_status)
+
+    st.session_state.staff_feedback = (
+        "success", f"✅ Status changed from {old_status} to {new_status}."
+    )
+
+
+def show_staff_complaint_details(complaint_id, staff_id):
+    """Show a complaint's details, the status control, the response form and
+    previous responses, but ONLY if the complaint is assigned to this staff member.
+
+    complaint_id -> the complaint the staff member selected
+    staff_id     -> the logged-in staff member's database id"""
+
+    complaint = get_complaint_by_id(complaint_id)
+
+    # SECURITY CHECK: the complaint must exist AND be assigned to this staff member.
+    if complaint is None or complaint["assigned_staff"] != staff_id:
+        st.error(
+            "⛔ You are not allowed to view this complaint. It is not assigned to you.")
+        return
+
+    # Show the message left by the Update Status button (once).
+    feedback = st.session_state.pop("staff_feedback", None)
+    if feedback:
+        message_type, message_text = feedback
+        if message_type == "success":
+            st.success(message_text)
+        elif message_type == "error":
+            st.error(message_text)
+        else:
+            st.info(message_text)
+
+    # ----- Work out the values that need a little logic -----------
+    location = complaint["location"] if complaint["location"] else "Not specified"
+
+    # Look up the student's name from the student_id stored on the complaint.
+    student = get_user_by_id(complaint["student_id"])
+    student_text = f"{student['name']} (ID {student['id']})" if student else f"ID {complaint['student_id']}"
+
+    status = complaint["status"]
+    status_text = f"{STATUS_ICONS.get(status, '⚪')} {status}"
+
+    # ----- Details in two columns ----------------------------------
+    left, right = st.columns(2)
+    with left:
+        st.markdown(f"**Complaint ID:** #{complaint['id']}")
+        st.markdown(f"**Title:** {complaint['title']}")
+        st.markdown(f"**Category:** {complaint['category']}")
+        st.markdown(f"**Location:** {location}")
+    with right:
+        st.markdown(f"**Priority:** {complaint['priority']}")
+        st.markdown(f"**Status:** {status_text}")
+        st.markdown(f"**Created Date:** {complaint['created_at']}")
+        st.markdown(f"**Student:** {student_text}")
+
+    st.text_area(
+        "Description",
+        value=complaint["description"],
+        height=150,
+        disabled=True,
+        key=f"staff_description_box_{complaint['id']}",
+    )
+
+    # ----- Update Status -------------------------------------------
+    st.markdown("##### 🔄 Update Status")
+    col_select, col_button = st.columns([3, 1])
+    with col_select:
+        # The dropdown starts on the complaint's current status.
+        # The key includes the complaint id so each complaint has its own dropdown.
+        current_index = STATUS_OPTIONS.index(
+            status) if status in STATUS_OPTIONS else 0
+        st.selectbox(
+            "New status",
+            STATUS_OPTIONS,
+            index=current_index,
+            key=f"status_select_{complaint['id']}",
+        )
+    with col_button:
+        st.write("")  # small spacer so the button lines up with the dropdown
+        st.write("")
+        # on_click runs handle_status_update(complaint_id, staff_id) when pressed.
+        st.button(
+            "Update Status",
+            key=f"status_button_{complaint['id']}",
+            on_click=handle_status_update,
+            args=(complaint["id"], staff_id),
+            use_container_width=True,
+        )
+
+    # ----- Write a Response ----------------------------------------
+    st.markdown("##### ✍️ Respond to Complaint")
+
+    # clear_on_submit=True empties the text box after the form is submitted.
+    with st.form(f"response_form_{complaint['id']}", clear_on_submit=True):
+        reply_text = st.text_area(
+            "Write your response to the student",
+            height=120,
+            placeholder="Explain what action is being taken, or ask the student for more information.",
+        )
+        send_clicked = st.form_submit_button("Send Response")
+
+    if send_clicked:
+        if not reply_text.strip():
+            st.error("Please write a response before sending.")
+        else:
+            # Save the reply. add_response() stores the current date/time itself.
+            add_response(complaint["id"], staff_id, reply_text.strip())
+            st.success(
+                "✅ Your response was saved and the student can now see it.")
+
+    # ----- Previous Responses --------------------------------------
+    # This runs AFTER the form above, so a reply just sent appears immediately.
+    st.markdown("##### 💬 Previous Responses")
+    responses = get_responses(complaint["id"])
+
+    if not responses:
+        st.info("No responses have been sent for this complaint yet.")
+    else:
+        for reply in responses:
+            staff_name = reply["staff_name"] if reply["staff_name"] else "Staff"
+            st.markdown(f"**{staff_name}** • {reply['created_at']}")
+            st.write(reply["response"])
+            st.divider()
+
+
+# NEW: runs when the administrator presses the Assign / Reassign button.
+def handle_assignment(complaint_id):
+    """Assign (or reassign) a complaint to the staff member chosen in the dropdown.
+    Used as a CALLBACK, so it runs BEFORE the page is redrawn and the page
+    will already show the new assignment.
+
+    complaint_id -> the complaint being assigned"""
+
+    # SECURITY CHECK: only an Administrator may assign complaints.
+    if st.session_state.role != "Administrator":
+        st.session_state.admin_feedback = (
+            "error", "⛔ Only administrators can assign complaints."
+        )
+        return
+
+    complaint = get_complaint_by_id(complaint_id)
+    if complaint is None:
+        st.session_state.admin_feedback = (
+            "error", "That complaint no longer exists.")
+        return
+
+    # Read the staff member chosen in the dropdown (its key contains the complaint id).
+    # The dropdown holds staff database ids, so this is a number.
+    staff_id = st.session_state[f"assign_staff_{complaint_id}"]
+
+    # Nothing to do if it is already assigned to that person.
+    if complaint["assigned_staff"] == staff_id:
+        st.session_state.admin_feedback = (
+            "info", "This complaint is already assigned to that staff member."
+        )
+        return
+
+    # Save the assignment. assign_complaint() also checks that the chosen
+    # user really has the role "Staff".
+    saved = assign_complaint(complaint_id, staff_id)
+
+    if saved:
+        staff_member = get_user_by_id(staff_id)
+        st.session_state.admin_feedback = (
+            "success",
+            f"✅ Complaint #{complaint_id} is now assigned to {staff_member['name']}.",
+        )
+    else:
+        st.session_state.admin_feedback = (
+            "error", "The assignment could not be saved. Please try again."
+        )
+
+
+# NEW: the whole "Complaint Assignment" section of the Administrator dashboard.
+def show_admin_assignment_section():
+    """Show all complaints, the selected complaint's details, and the
+    controls to assign or reassign it to a Staff user."""
+
+    # SECURITY CHECK: this section is only for administrators.
+    if st.session_state.role != "Administrator":
+        st.error("⛔ Only administrators can access complaint assignment.")
+        return
+
+    st.subheader("🗂️ Complaint Assignment")
+
+    # Load EVERY complaint in the database.
+    complaints = get_complaints()
+
+    if not complaints:
+        st.info("There are no complaints in the system yet.")
+        return
+
+    # ----- Part 1: table of all complaints --------------------------
+    # The table needs the staff member's NAME, but the complaint only stores an id.
+    # We look each id up once and remember the name in a dictionary.
+    staff_names = {}
+    for c in complaints:
+        staff_id = c["assigned_staff"]
+        if staff_id is not None and staff_id not in staff_names:
+            user = get_user_by_id(staff_id)
+            staff_names[staff_id] = user["name"] if user else "Unknown"
+
+    table = pd.DataFrame(complaints)
+    # .map() replaces each id with the matching name. Missing ids become "Unassigned".
+    table["assigned_name"] = table["assigned_staff"].map(
+        staff_names).fillna("Unassigned")
+    table = table[
+        ["id", "title", "category", "priority",
+            "status", "assigned_name", "created_at"]
+    ].rename(columns={
+        "id": "ID",
+        "title": "Title",
+        "category": "Category",
+        "priority": "Priority",
+        "status": "Status",
+        "assigned_name": "Assigned Staff",
+        "created_at": "Created",
+    })
+    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.caption(f"{len(complaints)} complaint(s) in the system.")
+
+    # ----- Part 2: choose a complaint -------------------------------
+    st.markdown("#### 🔍 Select a Complaint")
+    complaint_ids = [c["id"] for c in complaints]
+    titles_by_id = {c["id"]: c["title"] for c in complaints}
+
+    selected_id = st.selectbox(
+        "Select a complaint",
+        complaint_ids,
+        format_func=lambda cid: f"#{cid} - {titles_by_id[cid]}",
+        key="admin_selected_complaint",
+    )
+
+    # Reload the selected complaint fresh from the database, so the details
+    # always show the latest assignment.
+    complaint = get_complaint_by_id(selected_id)
+
+    # Show the message left by the assignment button (once).
+    feedback = st.session_state.pop("admin_feedback", None)
+    if feedback:
+        message_type, message_text = feedback
+        if message_type == "success":
+            st.success(message_text)
+        elif message_type == "error":
+            st.error(message_text)
+        else:
+            st.info(message_text)
+
+    # ----- Part 3: details of the selected complaint -----------------
+    location = complaint["location"] if complaint["location"] else "Not specified"
+
+    if complaint["assigned_staff"] is None:
+        current_staff_text = "Not assigned yet"
+    else:
+        current_staff = get_user_by_id(complaint["assigned_staff"])
+        current_staff_text = current_staff["name"] if current_staff else "Unknown"
+
+    status = complaint["status"]
+    status_text = f"{STATUS_ICONS.get(status, '⚪')} {status}"
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown(f"**Complaint ID:** #{complaint['id']}")
+        st.markdown(f"**Title:** {complaint['title']}")
+        st.markdown(f"**Category:** {complaint['category']}")
+        st.markdown(f"**Location:** {location}")
+    with right:
+        st.markdown(f"**Priority:** {complaint['priority']}")
+        st.markdown(f"**Status:** {status_text}")
+        st.markdown(f"**Created Date:** {complaint['created_at']}")
+        st.markdown(f"**Currently Assigned To:** {current_staff_text}")
+
+    st.text_area(
+        "Description",
+        value=complaint["description"],
+        height=150,
+        disabled=True,
+        key=f"admin_description_box_{complaint['id']}",
+    )
+
+    # ----- Part 4: assign or reassign --------------------------------
+    st.markdown("##### 👤 Assign to Staff")
+
+    # ONLY users whose role is "Staff" are loaded, so nobody else can be chosen.
+    staff_list = get_users_by_role("Staff")
+
+    if not staff_list:
+        st.warning(
+            "There are no Staff users in the system to assign complaints to.")
+        return
+
+    staff_ids = [s["id"] for s in staff_list]
+    # A label for each option, e.g. "Staff User (Administration)".
+    staff_labels = {
+        s["id"]: f"{s['name']} ({s['department']})" if s["department"] else s["name"]
+        for s in staff_list
+    }
+
+    # Start the dropdown on the current staff member (if there is one),
+    # otherwise on the first person in the list.
+    current_id = complaint["assigned_staff"]
+    default_index = staff_ids.index(
+        current_id) if current_id in staff_ids else 0
+
+    col_select, col_button = st.columns([3, 1])
+    with col_select:
+        st.selectbox(
+            "Choose a staff member",
+            staff_ids,
+            index=default_index,
+            format_func=lambda sid: staff_labels[sid],
+            key=f"assign_staff_{complaint['id']}",
+        )
+    with col_button:
+        st.write("")  # spacers so the button lines up with the dropdown
+        st.write("")
+        # The button says "Reassign" when the complaint already has a staff member.
+        button_label = "Reassign Complaint" if complaint[
+            "assigned_staff"] is not None else "Assign Complaint"
+        st.button(
+            button_label,
+            key=f"assign_button_{complaint['id']}",
+            on_click=handle_assignment,
+            args=(complaint["id"],),
+            use_container_width=True,
+        )
 
 
 # ---------------------------------------------------------------
@@ -523,7 +891,7 @@ def show_student_dashboard():
         st.dataframe(table, use_container_width=True, hide_index=True)
         st.caption(f"You have submitted {len(complaints)} complaint(s).")
 
-        # ----- NEW: Complaint Details ------------------------------
+        # ----- Complaint Details ------------------------------------
         st.markdown("#### 🔍 Complaint Details")
 
         # The dropdown is built ONLY from this student's own complaints,
@@ -544,7 +912,6 @@ def show_student_dashboard():
     st.divider()
 
     # ----- Section 3: still a placeholder ---------------------------
-    # CHANGED: status and responses are now built, so only AI analysis remains.
     placeholder_section(
         "🤖", "AI Analysis",
         "Students will view the AI analysis of their complaints (category, sentiment and summary).",
@@ -555,22 +922,91 @@ def show_staff_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Staff Dashboard")
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        placeholder_section("📥", "Assigned Complaints",
-                            "Staff will see the complaints assigned to them.")
-    with col2:
-        placeholder_section(
-            "🔄", "Update Status", "Staff will change a complaint to Open, In Progress or Resolved.")
-    with col3:
-        placeholder_section("💬", "Respond to Complaint",
-                            "Staff will write a reply to the student.")
+    # Find the logged-in staff member's database ID using their login email.
+    staff = get_user_by_email(st.session_state.user_email)
+    if staff is None:
+        st.error(
+            "Your account was not found in the database. Please log out and log in again.")
+        return
+
+    # Load ONLY the complaints assigned to this staff member.
+    complaints = get_complaints(assigned_staff=staff["id"])
+
+    # ----- Section 1: Summary metrics -------------------------------
+    st.subheader("📊 Staff Complaint Dashboard")
+
+    # Count complaints by status/priority with simple list comprehensions.
+    total = len(complaints)
+    pending = len([c for c in complaints if c["status"] == "Pending"])
+    in_progress = len([c for c in complaints if c["status"] == "In Progress"])
+    resolved = len([c for c in complaints if c["status"] == "Resolved"])
+    high_priority = len([c for c in complaints if c["priority"] == "High"])
+
+    # Five equal columns, one metric card in each.
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Assigned Complaints", total)
+    m2.metric("Pending", pending)
+    m3.metric("In Progress", in_progress)
+    m4.metric("Resolved", resolved)
+    m5.metric("High Priority", high_priority)
+
+    st.divider()
+
+    # ----- Section 2: Assigned Complaints ---------------------------
+    st.subheader("📥 Assigned Complaints")
+
+    if not complaints:
+        st.info(
+            "No complaints are assigned to you yet. "
+            "Complaints appear here once an administrator assigns them to you."
+        )
+        return  # nothing else to show, so stop here
+
+    # Turn the list into a Pandas table with friendly column names.
+    table = pd.DataFrame(complaints)[
+        ["id", "title", "category", "priority", "status", "created_at"]
+    ].rename(columns={
+        "id": "ID",
+        "title": "Title",
+        "category": "Category",
+        "priority": "Priority",
+        "status": "Status",
+        "created_at": "Created",
+    })
+    st.dataframe(table, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ----- Section 3: Complaint Details, Status and Responses -------
+    st.subheader("🔍 Complaint Details")
+
+    # The dropdown is built ONLY from this staff member's assigned complaints.
+    complaint_ids = [c["id"] for c in complaints]
+    titles_by_id = {c["id"]: c["title"] for c in complaints}
+
+    selected_id = st.selectbox(
+        "Select an assigned complaint",
+        complaint_ids,
+        format_func=lambda cid: f"#{cid} - {titles_by_id[cid]}",
+        key="staff_selected_complaint",
+    )
+
+    # This function double-checks the assignment, then shows details,
+    # the status control, the response form and previous responses.
+    show_staff_complaint_details(selected_id, staff["id"])
 
 
+# CHANGED: the Administrator dashboard now starts with Complaint Assignment.
 def show_admin_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Administrator Dashboard")
 
+    # The real feature: view all complaints and assign them to staff.
+    show_admin_assignment_section()
+
+    st.divider()
+
+    # The remaining admin features are still placeholders.
     col1, col2, col3 = st.columns(3)
     with col1:
         placeholder_section("📊", "Complaint Analytics",
@@ -604,7 +1040,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 5")
+    st.caption("Final-Year Project Prototype • Version 7")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING

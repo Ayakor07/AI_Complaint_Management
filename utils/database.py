@@ -156,7 +156,6 @@ def get_user_by_email(email):
     return dict(row) if row else None
 
 
-# NEW: used to turn an id (like the assigned_staff number) into a name.
 def get_user_by_id(user_id):
     """Find one user by their id. Returns a dictionary, or None if not found."""
     conn = get_connection()
@@ -165,6 +164,19 @@ def get_user_by_id(user_id):
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# NEW: used by the administrator to list only the Staff users.
+def get_users_by_role(role):
+    """Return a list of all users who have the given role (e.g. 'Staff'),
+    sorted by name. The password column is NOT included on purpose."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, name, email, role, department FROM users WHERE role = ? ORDER BY name",
+        (role,),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 # ---------------------------------------------------------------
@@ -242,6 +254,29 @@ def update_complaint_status(complaint_id, new_status):
     )
     conn.commit()
     updated = cursor.rowcount > 0  # rowcount = how many rows were changed
+    conn.close()
+    return updated
+
+
+# NEW: assigns (or reassigns) a complaint to a staff member.
+def assign_complaint(complaint_id, staff_id):
+    """Save staff_id into the complaint's assigned_staff column.
+    Works for a first assignment AND for reassignment (it simply overwrites).
+    Returns True if the complaint was updated, or False if the staff id does
+    not belong to a user with the role 'Staff' or the complaint does not exist."""
+
+    # Safety check: only real Staff users can be assigned complaints.
+    staff_member = get_user_by_id(staff_id)
+    if staff_member is None or staff_member["role"] != "Staff":
+        return False
+
+    conn = get_connection()
+    cursor = conn.execute(
+        "UPDATE complaints SET assigned_staff = ? WHERE id = ?",
+        (staff_id, complaint_id),
+    )
+    conn.commit()
+    updated = cursor.rowcount > 0
     conn.close()
     return updated
 
