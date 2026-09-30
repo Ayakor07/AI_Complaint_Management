@@ -1,7 +1,7 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 12 (Admin: AI Management Insights)
+# Decision Support System  -  VERSION 13 (Admin: Reports + User Management)
 #
 # This version adds an "AI Management Insights" section to the
 # Administrator analytics. It turns the complaint data into a few
@@ -21,6 +21,7 @@ from utils.database import (
     get_user_by_email,
     get_user_by_id,
     get_users_by_role,
+    add_user,
     add_complaint,
     get_complaints,
     get_complaint_by_id,
@@ -219,11 +220,28 @@ if "logged_in" not in st.session_state:
 # ---------------------------------------------------------------
 def check_login(email, password):
     """Return the user's details if the email and password are correct,
-    otherwise return None."""
-    email = email.strip().lower()  # ignore extra spaces and capital letters
-    user = DEMO_USERS.get(email)   # look up the email in our dictionary
+    otherwise return None.
+
+    Demo accounts are checked first so the original demonstration login
+    behaviour remains available. If the email is not a demo account, the
+    database is checked so administrators can create real project users.
+    """
+    email = email.strip().lower()
+
+    # 1. Keep the original demo accounts working.
+    user = DEMO_USERS.get(email)
     if user is not None and user["password"] == password:
         return {"email": email, "name": user["name"], "role": user["role"]}
+
+    # 2. Also allow users created through Administrator -> User Management.
+    db_user = get_user_by_email(email)
+    if db_user is not None and db_user.get("password") == password:
+        return {
+            "email": db_user["email"],
+            "name": db_user["name"],
+            "role": db_user["role"],
+        }
+
     return None
 
 
@@ -1638,7 +1656,295 @@ def show_login_page():
 
 
 # ---------------------------------------------------------------
-# 7. ROLE DASHBOARDS
+# 7. ADMINISTRATOR USER MANAGEMENT
+# ---------------------------------------------------------------
+def show_admin_user_management():
+    """Let administrators view users and create Student/Staff accounts."""
+    if st.session_state.role != "Administrator":
+        st.error("⛔ Only administrators can manage users.")
+        return
+
+    st.subheader("👥 User Management")
+    st.caption(
+        "Create and review Student and Staff accounts used by the complaint system.")
+
+    students = get_users_by_role("Student")
+    staff = get_users_by_role("Staff")
+    administrators = get_users_by_role("Administrator")
+
+    all_users = students + staff + administrators
+
+    if all_users:
+        user_rows = []
+        for user in all_users:
+            user_rows.append({
+                "ID": user["id"],
+                "Name": user["name"],
+                "Email": user["email"],
+                "Role": user["role"],
+                "Department": user["department"] or "—",
+            })
+
+        user_df = pd.DataFrame(user_rows).sort_values(
+            ["Role", "Name"], kind="stable"
+        )
+        st.dataframe(user_df, use_container_width=True, hide_index=True)
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Students", len(students))
+        m2.metric("Staff", len(staff))
+        m3.metric("Administrators", len(administrators))
+
+    st.markdown("#### ➕ Create User")
+
+    with st.form("admin_create_user_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            new_name = st.text_input("Full Name *", max_chars=100)
+            new_email = st.text_input(
+                "Email *",
+                placeholder="person@university.edu",
+            )
+            new_password = st.text_input(
+                "Password *",
+                type="password",
+                help="For this project prototype, passwords are stored as plain text."
+            )
+
+        with col2:
+            new_role = st.selectbox(
+                "Role *",
+                ["Student", "Staff"],
+            )
+            new_department = st.text_input(
+                "Department",
+                placeholder="e.g. IT Support, Library, Administration",
+            )
+
+        create_clicked = st.form_submit_button(
+            "Create User",
+            use_container_width=True,
+        )
+
+    if create_clicked:
+        name = new_name.strip()
+        email = new_email.strip().lower()
+        password = new_password.strip()
+        department = new_department.strip() or None
+
+        if not name or not email or not password:
+            st.error("Please fill in Name, Email and Password.")
+            return
+
+        if "@" not in email or "." not in email.split("@")[-1]:
+            st.error("Please enter a valid email address.")
+            return
+
+        if len(password) < 6:
+            st.error("Password must contain at least 6 characters.")
+            return
+
+        if get_user_by_email(email) is not None:
+            st.error("A user with this email already exists.")
+            return
+
+        try:
+            new_id = add_user(
+                name=name,
+                email=email,
+                password=password,
+                role=new_role,
+                department=department,
+            )
+            st.success(
+                f"✅ User #{new_id} was created successfully. "
+                f"They can now log in with their email and password."
+            )
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Could not create the user: {exc}")
+
+
+# ---------------------------------------------------------------
+# 8. ADMINISTRATOR REPORTS
+# ---------------------------------------------------------------
+def build_ai_report_rows(complaints):
+    """Build one report row per complaint, including saved AI analysis."""
+    rows = []
+
+    for complaint in complaints:
+        analysis = get_ai_analysis(complaint["id"])
+
+        rows.append({
+            "Complaint ID": complaint["id"],
+            "Title": complaint["title"],
+            "Category": complaint["category"],
+            "Location": complaint["location"] or "",
+            "Manual Priority": complaint["priority"],
+            "Status": complaint["status"],
+            "Created At": complaint["created_at"],
+            "Resolved At": complaint["resolved_at"] or "",
+            "Assigned Staff ID": complaint["assigned_staff"] or "",
+            "AI Category": analysis["category"] if analysis else "",
+            "AI Sentiment": analysis["sentiment"] if analysis else "",
+            "AI Recommended Priority": analysis["priority"] if analysis else "",
+            "AI Confidence": analysis["confidence"] if analysis else "",
+            "AI Summary": analysis["summary"] if analysis else "",
+            "AI Suggested Response": analysis["suggested_response"] if analysis else "",
+        })
+
+    return rows
+
+
+def show_admin_reports():
+    """Show a service-quality report and downloadable CSV files."""
+    if st.session_state.role != "Administrator":
+        st.error("⛔ Only administrators can view reports.")
+        return
+
+    st.subheader("📄 Reports")
+    st.caption(
+        "Generate read-only service-quality reports from the current complaint data."
+    )
+
+    complaints = get_complaints()
+    kpis = calculate_admin_kpis(complaints)
+
+    # ----- Service quality summary ---------------------------------
+    st.markdown("#### 📊 Service Quality Summary")
+
+    summary_rows = [
+        {"Metric": "Total Complaints", "Value": kpis["total"]},
+        {"Metric": "Pending", "Value": kpis["pending"]},
+        {"Metric": "In Progress", "Value": kpis["in_progress"]},
+        {"Metric": "Resolved", "Value": kpis["resolved"]},
+        {"Metric": "High Priority", "Value": kpis["high_priority"]},
+        {"Metric": "Resolution Rate",
+            "Value": f"{kpis['resolution_rate']:.1f}%"},
+        {"Metric": "Average Resolution Time",
+            "Value": kpis["average_resolution_time"]},
+    ]
+    summary_df = pd.DataFrame(summary_rows)
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+    if not complaints:
+        st.info("There are no complaints to include in a report yet.")
+        return
+
+    df = pd.DataFrame(complaints)
+
+    # ----- Breakdown tables ----------------------------------------
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Complaints by Category**")
+        category_report = (
+            df["category"]
+            .fillna("Unknown")
+            .value_counts()
+            .rename_axis("Category")
+            .reset_index(name="Complaints")
+        )
+        st.dataframe(category_report,
+                     use_container_width=True, hide_index=True)
+
+    with col2:
+        st.markdown("**Complaints by Status**")
+        status_report = (
+            df["status"]
+            .fillna("Unknown")
+            .value_counts()
+            .rename_axis("Status")
+            .reset_index(name="Complaints")
+        )
+        st.dataframe(status_report, use_container_width=True, hide_index=True)
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.markdown("**Complaints by Priority**")
+        priority_report = (
+            df["priority"]
+            .fillna("Unknown")
+            .value_counts()
+            .rename_axis("Priority")
+            .reset_index(name="Complaints")
+        )
+        st.dataframe(priority_report,
+                     use_container_width=True, hide_index=True)
+
+    with col4:
+        st.markdown("**Complaints by Assigned Staff**")
+        assigned_names = []
+        for complaint in complaints:
+            staff_id = complaint["assigned_staff"]
+            if staff_id is None:
+                assigned_names.append("Unassigned")
+            else:
+                staff = get_user_by_id(staff_id)
+                assigned_names.append(
+                    staff["name"] if staff else f"Staff ID {staff_id}"
+                )
+
+        assigned_report = (
+            pd.Series(assigned_names, name="Assigned Staff")
+            .value_counts()
+            .rename_axis("Assigned Staff")
+            .reset_index(name="Complaints")
+        )
+        st.dataframe(assigned_report,
+                     use_container_width=True, hide_index=True)
+
+    # ----- Downloads -----------------------------------------------
+    st.markdown("#### ⬇️ Download Reports")
+
+    complaint_report_df = df.copy()
+    complaint_report_df = complaint_report_df.rename(columns={
+        "id": "Complaint ID",
+        "student_id": "Student ID",
+        "title": "Title",
+        "description": "Description",
+        "category": "Category",
+        "location": "Location",
+        "priority": "Priority",
+        "sentiment": "Sentiment",
+        "status": "Status",
+        "assigned_staff": "Assigned Staff ID",
+        "created_at": "Created At",
+        "resolved_at": "Resolved At",
+    })
+
+    complaint_csv = complaint_report_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Download Complaint Report (CSV)",
+        data=complaint_csv,
+        file_name="complaint_report.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+    ai_rows = build_ai_report_rows(complaints)
+    ai_report_df = pd.DataFrame(ai_rows)
+    ai_csv = ai_report_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "⬇️ Download AI Analysis Report (CSV)",
+        data=ai_csv,
+        file_name="ai_complaint_analysis_report.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+    with st.expander("Preview AI Analysis Report"):
+        st.dataframe(
+            ai_report_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+# ---------------------------------------------------------------
+# 9. ROLE DASHBOARDS
 # ---------------------------------------------------------------
 def show_student_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
@@ -1815,24 +2121,25 @@ def show_admin_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Administrator Dashboard")
 
-    # KPI cards, charts, recurring issues and AI management insights.
-    show_analytics_overview()
+    # The administrator can switch between the major management areas.
+    admin_tab1, admin_tab2, admin_tab3, admin_tab4 = st.tabs([
+        "📈 Analytics",
+        "🗂️ Complaint Assignment",
+        "👥 User Management",
+        "📄 Reports",
+    ])
 
-    st.divider()
+    with admin_tab1:
+        show_analytics_overview()
 
-    # View all complaints, see the AI analysis, and assign to staff.
-    show_admin_assignment_section()
+    with admin_tab2:
+        show_admin_assignment_section()
 
-    st.divider()
+    with admin_tab3:
+        show_admin_user_management()
 
-    # Two placeholders remain for later stages.
-    col1, col2 = st.columns(2)
-    with col1:
-        placeholder_section(
-            "👥", "User Management", "Administrators will manage student and staff accounts.")
-    with col2:
-        placeholder_section(
-            "📄", "Reports", "Administrators will generate service-quality reports.")
+    with admin_tab4:
+        show_admin_reports()
 
 
 # ---------------------------------------------------------------
@@ -1856,7 +2163,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 12")
+    st.caption("Final-Year Project Prototype • Version 13")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING
