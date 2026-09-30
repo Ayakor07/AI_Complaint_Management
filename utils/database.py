@@ -156,6 +156,17 @@ def get_user_by_email(email):
     return dict(row) if row else None
 
 
+# NEW: used to turn an id (like the assigned_staff number) into a name.
+def get_user_by_id(user_id):
+    """Find one user by their id. Returns a dictionary, or None if not found."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 # ---------------------------------------------------------------
 # COMPLAINTS
 # ---------------------------------------------------------------

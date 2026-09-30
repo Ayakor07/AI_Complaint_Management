@@ -1,24 +1,27 @@
 # app.py
 # ---------------------------------------------------------------
 # AI-Enhanced Complaint Management and Service Quality
-# Decision Support System  -  VERSION 4 (Student: Submit Complaint)
+# Decision Support System  -  VERSION 5 (Student: Details and Tracking)
 #
 # This version adds:
-#   - a working "Submit Complaint" form on the Student dashboard
-#   - a "My Complaints" table showing only the logged-in student's complaints
+#   - students can select one of THEIR complaints and see its full details
+#   - students can read the staff responses for that complaint
 # Login still uses the demo accounts below.
 # There is still NO AI or analytics.
 # ---------------------------------------------------------------
 
 import streamlit as st  # Streamlit turns this Python file into a web app
-import pandas as pd     # NEW: Pandas builds the "My Complaints" table
+import pandas as pd     # Pandas builds the "My Complaints" table
 
-# CHANGED: we now also import the functions needed for complaints
+# CHANGED: we now also import get_complaint_by_id, get_responses, get_user_by_id
 from utils.database import (
     initialize_database,
     get_user_by_email,
+    get_user_by_id,
     add_complaint,
     get_complaints,
+    get_complaint_by_id,
+    get_responses,
 )
 
 # ---------------------------------------------------------------
@@ -124,14 +127,14 @@ DEMO_USERS = {
     },
 }
 
-# NEW: the choices shown in the complaint form dropdowns.
+# The choices shown in the complaint form dropdowns.
 COMPLAINT_CATEGORIES = [
     "Academic", "IT / Network", "Library", "Hostel",
     "Facilities", "Finance", "Transportation", "Other",
 ]
 COMPLAINT_PRIORITIES = ["Low", "Medium", "High"]
 
-# NEW: the starting value of every field in the complaint form.
+# The starting value of every field in the complaint form.
 # The keys (left side) are also the widget keys used in the form below.
 COMPLAINT_FORM_DEFAULTS = {
     "complaint_title": "",
@@ -139,6 +142,13 @@ COMPLAINT_FORM_DEFAULTS = {
     "complaint_category": COMPLAINT_CATEGORIES[0],
     "complaint_location": "",
     "complaint_priority": "Medium",
+}
+
+# NEW: a small coloured icon shown next to each status.
+STATUS_ICONS = {
+    "Pending": "🟡",
+    "In Progress": "🔵",
+    "Resolved": "🟢",
 }
 
 # ---------------------------------------------------------------
@@ -202,7 +212,6 @@ def placeholder_section(icon, title, description):
     )
 
 
-# NEW: runs when the student presses "Submit Complaint".
 def handle_complaint_submit():
     """Validate the form, save the complaint to the database, then reset the form.
 
@@ -255,6 +264,80 @@ def handle_complaint_submit():
         "success",
         f"✅ Complaint #{new_id} was submitted successfully. Its status is now Pending.",
     )
+
+
+# NEW: shows the full details and staff responses of ONE complaint.
+def show_complaint_details(complaint_id, student_id):
+    """Display one complaint in full, but ONLY if it belongs to this student.
+
+    complaint_id -> the complaint the student selected
+    student_id   -> the logged-in student's database id"""
+
+    # Load the complaint from the database.
+    complaint = get_complaint_by_id(complaint_id)
+
+    # SECURITY CHECK: the complaint must exist AND belong to this student.
+    # If not, we show an error and stop (return) before showing anything.
+    if complaint is None or complaint["student_id"] != student_id:
+        st.error("⛔ You are not allowed to view this complaint.")
+        return
+
+    # ----- Work out the values that need a little logic -----------
+    # Location is optional, so it may be empty (None).
+    location = complaint["location"] if complaint["location"] else "Not specified"
+
+    # assigned_staff holds a user id (a number) or None.
+    # If it is set, look up that staff member's name.
+    if complaint["assigned_staff"] is None:
+        assigned_to = "Not assigned yet"
+    else:
+        staff_member = get_user_by_id(complaint["assigned_staff"])
+        assigned_to = staff_member["name"] if staff_member else "Unknown staff member"
+
+    # resolved_at is empty until the complaint is resolved.
+    resolved_date = complaint["resolved_at"] if complaint["resolved_at"] else "Not resolved yet"
+
+    # Pick an icon for the current status (fall back to a grey dot).
+    status = complaint["status"]
+    status_text = f"{STATUS_ICONS.get(status, '⚪')} {status}"
+
+    # ----- Show the details in two columns -------------------------
+    left, right = st.columns(2)
+    with left:
+        st.markdown(f"**Complaint ID:** #{complaint['id']}")
+        st.markdown(f"**Title:** {complaint['title']}")
+        st.markdown(f"**Category:** {complaint['category']}")
+        st.markdown(f"**Location:** {location}")
+    with right:
+        st.markdown(f"**Priority:** {complaint['priority']}")
+        st.markdown(f"**Current Status:** {status_text}")
+        st.markdown(f"**Created Date:** {complaint['created_at']}")
+        st.markdown(f"**Assigned Staff:** {assigned_to}")
+        st.markdown(f"**Resolved Date:** {resolved_date}")
+
+    # The description can be long, so it gets its own read-only box.
+    # (disabled=True means the student can read it but not edit it.)
+    st.text_area(
+        "Description",
+        value=complaint["description"],
+        height=150,
+        disabled=True,
+        key=f"description_box_{complaint['id']}",
+    )
+
+    # ----- Staff responses ------------------------------------------
+    st.markdown("##### 💬 Staff Responses")
+    # each item includes 'staff_name'
+    responses = get_responses(complaint["id"])
+
+    if not responses:
+        st.info("No staff response yet.")
+    else:
+        for reply in responses:
+            staff_name = reply["staff_name"] if reply["staff_name"] else "Staff"
+            st.markdown(f"**{staff_name}** • {reply['created_at']}")
+            st.write(reply["response"])
+            st.divider()
 
 
 # ---------------------------------------------------------------
@@ -367,7 +450,6 @@ def show_login_page():
 # ---------------------------------------------------------------
 # 7. ROLE DASHBOARDS
 # ---------------------------------------------------------------
-# CHANGED: the Student dashboard now has a real form and table.
 def show_student_dashboard():
     show_hero(f"Welcome back, {st.session_state.user_name}!")
     st.header("Student Dashboard")
@@ -441,12 +523,31 @@ def show_student_dashboard():
         st.dataframe(table, use_container_width=True, hide_index=True)
         st.caption(f"You have submitted {len(complaints)} complaint(s).")
 
+        # ----- NEW: Complaint Details ------------------------------
+        st.markdown("#### 🔍 Complaint Details")
+
+        # The dropdown is built ONLY from this student's own complaints,
+        # so another student's complaint can never appear in it.
+        complaint_ids = [c["id"] for c in complaints]
+        titles_by_id = {c["id"]: c["title"] for c in complaints}
+
+        selected_id = st.selectbox(
+            "Select a complaint to view its details",
+            complaint_ids,
+            # format_func decides how each id is DISPLAYED, e.g. "#3 - Wi-Fi not working"
+            format_func=lambda cid: f"#{cid} - {titles_by_id[cid]}",
+        )
+
+        # This function loads the complaint, double-checks ownership and shows it.
+        show_complaint_details(selected_id, student["id"])
+
     st.divider()
 
     # ----- Section 3: still a placeholder ---------------------------
+    # CHANGED: status and responses are now built, so only AI analysis remains.
     placeholder_section(
-        "🔎", "Complaint Status",
-        "Students will track progress, read staff responses and view AI analysis.",
+        "🤖", "AI Analysis",
+        "Students will view the AI analysis of their complaints (category, sentiment and summary).",
     )
 
 
@@ -503,7 +604,7 @@ with st.sidebar:
         st.info("Please log in to access your dashboard.")
 
     st.divider()
-    st.caption("Final-Year Project Prototype • Version 4")
+    st.caption("Final-Year Project Prototype • Version 5")
 
 # ---------------------------------------------------------------
 # 9. MAIN PAGE ROUTING
