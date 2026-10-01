@@ -201,6 +201,23 @@ st.markdown(
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
         }
 
+        /* Display-only information box shown under the login form */
+        .login-info-box {
+            background: #ffffff;
+            border: 1px solid var(--line);
+            border-top: 4px solid var(--blue-mid);
+            border-radius: 14px;
+            padding: 0.9rem 1.2rem;
+            margin-top: 0.8rem;
+            text-align: center;
+            color: var(--navy-2);
+            font-size: 0.92rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+            cursor: default;
+            user-select: none;
+            pointer-events: none;
+        }
+
         /* ---------- Cards ---------- */
         .card {
             background: #ffffff;
@@ -1961,16 +1978,11 @@ def show_login_page():
             else:
                 st.error("Incorrect email or password. Please try again.")
 
-        with st.expander("Demo accounts (for demonstration only)"):
-            st.markdown(
-                """
-                | Role | Email | Password |
-                |---|---|---|
-                | Student | student@university.edu | student123 |
-                | Staff | staff@university.edu | staff123 |
-                | Administrator | admin@university.edu | admin123 |
-                """
-            )
+        # Display-only information box (not a button, not clickable).
+        st.markdown(
+            '<div class="login-info-box"><strong>Please enter your credentials above</strong></div>',
+            unsafe_allow_html=True,
+        )
 
     st.write("")
     st.markdown('<div class="section-kicker">System users</div>',
