@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My Complaints</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+
+        .navbar {
+            background: #1f2937;
+            color: white;
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            margin-left: 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        h1 {
+            color: #1f2937;
+        }
+
+        .complaint-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .complaint-card h2 {
+            margin-top: 0;
+            color: #111827;
+        }
+
+        .details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .detail {
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 6px;
+        }
+
+        .label {
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+
+        .empty {
+            background: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+        }
+
+        .back-button {
+            display: inline-block;
+            margin-bottom: 25px;
+            padding: 10px 16px;
+            background: #374151;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="navbar">
+        <div>
+            <strong>🎓 Complaint Management System</strong>
+        </div>
+
+        <div>
+            <a href="/student">Dashboard</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <a href="/student" class="back-button">
+            ← Back to Dashboard
+        </a>
+
+        <h1>📋 My Complaints</h1>
+
+        {% if complaints %}
+
+            {% for complaint in complaints %}
+
+                <div class="complaint-card">
+
+                    <h2>{{ complaint["title"] }}</h2>
+
+                    <p>
+                        {{ complaint["description"] }}
+                    </p>
+
+                    <div class="details">
+
+                        <div class="detail">
+                            <span class="label">Category:</span>
+                            {{ complaint["category"] or "Not specified" }}
+                        </div>
+
+                        <div class="detail">
+                            <span class="label">Priority:</span>
+                            {{ complaint["priority"] or "Medium" }}
+                        </div>
+
+                        <div class="detail">
+                            <span class="label">Status:</span>
+                            <span class="status">
+                                {{ complaint["status"] }}
+                            </span>
+                        </div>
+
+                        <div class="detail">
+                            <span class="label">Location:</span>
+                            {{ complaint["location"] or "Not specified" }}
+                        </div>
+
+                        <div class="detail">
+                            <span class="label">Submitted:</span>
+                            {{ complaint["created_at"] }}
+                        </div>
+
+                                               <div class="detail">
+                            <span class="label">Assigned Staff:</span>
+                            {{ complaint["assigned_staff"] or "Not assigned" }}
+                        </div>
+
+                    </div>
+
+                    <a href="/student/complaint/{{ complaint['id'] }}"
+                       style="display:inline-block;
+                              margin-top:15px;
+                              padding:10px 15px;
+                              background:#374151;
+                              color:white;
+                              text-decoration:none;
+                              border-radius:6px;">
+                        View Details
+                    </a>
+                </div>
+
+            {% endfor %}
+
+        {% else %}
+
+            <div class="empty">
+                <h2>No complaints yet</h2>
+                <p>You have not submitted any complaints.</p>
+
+                <a href="/student/submit-complaint">
+                    Submit your first complaint
+                </a>
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</body>
+</html>

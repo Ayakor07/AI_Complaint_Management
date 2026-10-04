@@ -22,7 +22,15 @@
 # ---------------------------------------------------------------
 
 import re  # "re" = regular expressions, used for matching whole words
+import os
+import joblib
+MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "models",
+    "complaint_classifier.joblib"
+)
 
+ML_MODEL = joblib.load(MODEL_PATH)
 
 # ===============================================================
 # 1. KEYWORD LISTS  (edit these lists to tune the "AI")
@@ -168,35 +176,26 @@ def remove_keyword_matches(text, keywords):
 # 3. THE ANALYSIS STEPS
 # ===============================================================
 def classify_category(text):
-    """Decide the complaint category. Returns (category, confidence 0-100).
+    """
+    Predict complaint category using the trained
+    TF-IDF + Logistic Regression model.
 
-    Method: score every category by counting its keywords in the text and
-    pick the category with the highest score."""
+    Returns:
+        (category, confidence)
+    """
 
-    # Count keyword matches for each category, e.g. {"Library": 2, "IT / Network": 1, ...}
-    scores = {}
-    for category, keywords in CATEGORY_KEYWORDS.items():
-        scores[category] = count_keyword_matches(text, keywords)
+    text = clean_text(text)
 
-    # the category with the highest score
-    best_category = max(scores, key=scores.get)
-    best_score = scores[best_category]
-    total_score = sum(scores.values())
+    if not text:
+        return "Other", 0.0
 
-    # No keyword matched at all -> we cannot tell, so use "Other" with low confidence.
-    if best_score == 0:
-        return "Other", 35.0
+    prediction = ML_MODEL.predict([text])[0]
 
-    # Confidence combines two ideas:
-    #   share    = how much of ALL the matches belong to the winning category
-    #              (1.0 means no other category matched at all)
-    #   strength = how much evidence there is (3 or more matches = full strength)
-    share = best_score / total_score
-    strength = min(best_score, 3) / 3
-    confidence = 100 * (0.3 + 0.7 * share * strength)
-    confidence = min(confidence, 98.0)  # never claim 100% certainty
+    probabilities = ML_MODEL.predict_proba([text])[0]
 
-    return best_category, round(confidence, 1)
+    confidence = max(probabilities) * 100
+
+    return prediction, round(confidence, 1)
 
 
 def analyze_sentiment(text):

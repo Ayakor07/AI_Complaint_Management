@@ -1,0 +1,251 @@
+```html
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Administrator Dashboard</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #111827;
+            color: white;
+            margin: 0;
+        }
+
+        .navbar {
+            background: #030712;
+            color: white;
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            margin-left: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        h1 {
+            color: white;
+        }
+
+        .welcome {
+            color: #d1d5db;
+            margin-bottom: 30px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin: 25px 0 35px 0;
+        }
+
+        .kpi-card {
+            background: #1f2937;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .kpi-label {
+            color: #9ca3af;
+        }
+
+        .kpi-value {
+            font-size: 30px;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .complaint-card {
+            background: #1f2937;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        }
+
+        .complaint-card h2 {
+            margin-top: 0;
+            color: white;
+        }
+
+        .complaint-card p {
+            color: #d1d5db;
+        }
+
+        .details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .detail {
+            padding: 10px;
+            background: #374151;
+            border-radius: 6px;
+            color: #e5e7eb;
+        }
+
+        .label {
+            font-weight: bold;
+            color: white;
+        }
+
+        @media (max-width: 800px) {
+            .kpi-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .details {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 500px) {
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="navbar">
+
+        <strong>🎓 Complaint Management System</strong>
+
+        <div>
+            <a href="/admin">Dashboard</a>
+            <a href="/logout">Logout</a>
+        </div>
+
+    </div>
+
+    <div class="container">
+
+        <h1>Administrator Dashboard</h1>
+
+        <div class="kpi-grid">
+
+            <div class="kpi-card">
+                <div class="kpi-label">Total Complaints</div>
+                <div class="kpi-value">
+                    {{ total_complaints }}
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label">Pending</div>
+                <div class="kpi-value">
+                    {{ pending }}
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label">In Progress</div>
+                <div class="kpi-value">
+                    {{ in_progress }}
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label">Resolved</div>
+                <div class="kpi-value">
+                    {{ resolved }}
+                </div>
+            </div>
+
+        </div>
+
+        <p class="welcome">
+            Welcome, Administrator
+        </p>
+
+        <h2>All Complaints</h2>
+
+        {% if complaints %}
+
+        {% for complaint in complaints %}
+
+        <div class="complaint-card">
+
+            <h2>{{ complaint["title"] }}</h2>
+
+            <p>
+                {{ complaint["description"] }}
+            </p>
+
+            <div class="details">
+
+                <div class="detail">
+                    <span class="label">Category:</span>
+                    {{ complaint["category"] or "Not specified" }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Priority:</span>
+                    {{ complaint["priority"] or "Medium" }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Status:</span>
+                    {{ complaint["status"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Location:</span>
+                    {{ complaint["location"] or "Not specified" }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Submitted:</span>
+                    {{ complaint["created_at"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Assigned Staff:</span>
+                    {{ complaint["assigned_staff"] or "Not assigned" }}
+                </div>
+
+            </div>
+
+            <a href="/admin/complaint/{{ complaint['id'] }}" style="display:inline-block;
+                          margin-top:15px;
+                          padding:10px 16px;
+                          background:#4b5563;
+                          color:white;
+                          text-decoration:none;
+                          border-radius:6px;">
+                View Complaint
+            </a>
+
+        </div>
+
+        {% endfor %}
+
+        {% else %}
+
+        <div class="complaint-card">
+            <h2>No Complaints</h2>
+            <p>There are currently no complaints in the system.</p>
+        </div>
+
+        {% endif %}
+
+    </div>
+
+</body>
+
+</html>

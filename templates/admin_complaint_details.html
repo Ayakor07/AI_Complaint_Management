@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Admin - Complaint Details</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #111827;
+            color: white;
+            margin: 0;
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+
+        h1 {
+            margin-bottom: 25px;
+        }
+
+        .card {
+            background: #1f2937;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+        }
+
+        .detail {
+            margin-bottom: 12px;
+        }
+
+        .label {
+            font-weight: bold;
+            color: #9ca3af;
+        }
+
+        .ai-box {
+            background: #374151;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .response {
+            background: #374151;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+
+        .back-button {
+            display: inline-block;
+            padding: 10px 16px;
+            background: #4b5563;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <a href="/admin" class="back-button">
+            ← Back to Admin Dashboard
+        </a>
+
+        <h1>Complaint Details</h1>
+
+        <div class="card">
+
+            <h2>{{ complaint["title"] }}</h2>
+
+            <div class="detail">
+                <span class="label">Complaint ID:</span>
+                {{ complaint["id"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Description:</span>
+                {{ complaint["description"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Category:</span>
+                {{ complaint["category"] or "Not specified" }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Location:</span>
+                {{ complaint["location"] or "Not specified" }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Priority:</span>
+                {{ complaint["priority"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Status:</span>
+                {{ complaint["status"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Assigned Staff:</span>
+                {{ complaint["assigned_staff"] or "Not assigned" }}
+            </div>
+            <div class="ai-box">
+
+                <h3>Assign Complaint to Staff</h3>
+
+                <form method="POST" action="/admin/complaint/{{ complaint['id'] }}/assign">
+
+                    <select name="staff_id" style="width:100%;
+                   padding:10px;
+                   margin-top:10px;
+                   margin-bottom:12px;
+                   border-radius:6px;
+                   border:1px solid #4b5563;
+                   background:#111827;
+                   color:white;">
+
+                        <option value="">Select Staff Member</option>
+
+                        {% for staff in staff_users %}
+                        <option value="{{ staff['id'] }}" {% if complaint['assigned_staff']==staff['id'] %} selected {%
+                            endif %}>
+                            {{ staff['name'] }} — {{ staff['email'] }}
+                        </option>
+                        {% endfor %}
+
+                    </select>
+
+                    <button type="submit" style="padding:10px 16px;
+                   background:#2563eb;
+                   color:white;
+                   border:none;
+                   border-radius:6px;
+                   cursor:pointer;">
+                        Assign Staff
+                    </button>
+
+                </form>
+
+            </div>
+
+            <div class="detail">
+                <span class="label">Created:</span>
+                {{ complaint["created_at"] }}
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <h2>AI Analysis</h2>
+
+            {% if ai_analysis %}
+
+            <div class="ai-box">
+
+                <div class="detail">
+                    <span class="label">AI Category:</span>
+                    {{ ai_analysis["category"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Sentiment:</span>
+                    {{ ai_analysis["sentiment"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">AI Priority:</span>
+                    {{ ai_analysis["priority"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Confidence:</span>
+                    {{ ai_analysis["confidence"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Summary:</span>
+                    {{ ai_analysis["summary"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Suggested Response:</span>
+                    {{ ai_analysis["suggested_response"] }}
+                </div>
+
+            </div>
+
+            {% else %}
+
+            <p>No AI analysis available.</p>
+
+            {% endif %}
+
+        </div>
+
+
+        <div class="card">
+
+            <h2>Staff Responses</h2>
+
+            {% if responses %}
+
+            {% for response in responses %}
+
+            <div class="response">
+
+                <div class="detail">
+                    <span class="label">Staff ID:</span>
+                    {{ response["staff_id"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Response:</span>
+                    {{ response["response"] }}
+                </div>
+
+                <div class="detail">
+                    <span class="label">Date:</span>
+                    {{ response["created_at"] }}
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+            {% else %}
+
+            <p>No staff responses yet.</p>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</body>
+
+</html>

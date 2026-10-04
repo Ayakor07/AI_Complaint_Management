@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Student Dashboard</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #111827;
+            color: #1f2937;
+        }
+
+        .navbar {
+            background: #1f2937;
+            color: white;
+            padding: 18px 35px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .logout {
+            color: white;
+            text-decoration: none;
+            background: #dc2626;
+            padding: 9px 16px;
+            border-radius: 6px;
+        }
+
+        .logout:hover {
+            background: #b91c1c;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 35px auto;
+            padding: 0 20px;
+        }
+
+        .welcome {
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .welcome h1 {
+            margin-bottom: 8px;
+        }
+
+        .welcome p {
+            color: #d1d5db;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h3 {
+            margin-top: 0;
+        }
+
+        .card p {
+            color: #6b7280;
+            line-height: 1.5;
+        }
+
+        .card a {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px 15px;
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+
+        .card a:hover {
+            background: #1d4ed8;
+        }
+
+        @media (max-width: 800px) {
+            .cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="navbar">
+        <h2>🎓 Complaint Management System</h2>
+
+        <a href="/logout" class="logout">
+            Logout
+        </a>
+    </div>
+
+    <div class="container">
+
+        <div class="welcome">
+            <h1>Welcome, {{ user.name }}</h1>
+
+            <p>
+                Student Dashboard — manage and track your complaints.
+            </p>
+        </div>
+
+        <div class="cards">
+
+            <div class="card">
+                <h3>📝 Submit Complaint</h3>
+
+                <p>
+                    Submit a new complaint or report an issue.
+                </p>
+
+                <a href="/student/submit-complaint">
+                    Submit Complaint
+                </a>
+            </div>
+
+
+            <div class="card">
+                <h3>📋 My Complaints</h3>
+
+                <p>
+                    View complaints you have submitted and their current status.
+                </p>
+
+                <a href="/student/complaints">
+                    View Complaints
+                </a>
+            </div>
+
+
+            <div class="card">
+                <h3>🔍 Complaint Status</h3>
+
+                <p>
+                    Track the progress and resolution of your complaints.
+                </p>
+
+                <a href="#">
+                    Track Status
+                </a>
+            </div>
+
+
+            <div class="card">
+                <h3>🤖 AI Analysis</h3>
+
+                <p>
+                    View AI-generated category, sentiment, priority and summary.
+                </p>
+
+                <a href="#">
+                    View AI Analysis
+                </a>
+            </div>
+
+
+            <div class="card">
+                <h3>💬 Staff Responses</h3>
+
+                <p>
+                    View responses and updates from assigned staff members.
+                </p>
+
+                <a href="#">
+                    View Responses
+                </a>
+            </div>
+
+        </div>
+
+    </div>
+
+</body>
+</html>

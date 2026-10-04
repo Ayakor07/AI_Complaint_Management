@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Complaint Details</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+        }
+
+        .navbar {
+            background: #1f2937;
+            color: white;
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            margin-left: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            color: #1f2937;
+        }
+
+        h2 {
+            color: #374151;
+        }
+
+        .detail {
+            margin: 10px 0;
+        }
+
+        .label {
+            font-weight: bold;
+        }
+
+        .back {
+            display: inline-block;
+            margin-bottom: 20px;
+            padding: 10px 15px;
+            background: #374151;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+
+        .response {
+            background: #f9fafb;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="navbar">
+        <strong>🎓 Complaint Management System</strong>
+
+        <div>
+            <a href="/student">Dashboard</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <a href="/student/complaints" class="back">
+            ← Back to Complaints
+        </a>
+
+        <h1>Complaint Details</h1>
+
+        <div class="card">
+
+            <h2>{{ complaint["title"] }}</h2>
+
+            <div class="detail">
+                <span class="label">Description:</span><br>
+                {{ complaint["description"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Category:</span>
+                {{ complaint["category"] or "Not specified" }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Priority:</span>
+                {{ complaint["priority"] or "Medium" }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Status:</span>
+                {{ complaint["status"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Location:</span>
+                {{ complaint["location"] or "Not specified" }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Submitted:</span>
+                {{ complaint["created_at"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Assigned Staff:</span>
+                {{ complaint["assigned_staff"] or "Not assigned" }}
+            </div>
+
+        </div>
+
+        {% if ai_analysis %}
+
+        <div class="card">
+
+            <h2>🤖 AI Analysis</h2>
+
+            <div class="detail">
+                <span class="label">AI Category:</span>
+                {{ ai_analysis["category"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Sentiment:</span>
+                {{ ai_analysis["sentiment"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">AI Priority:</span>
+                {{ ai_analysis["priority"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Confidence:</span>
+                {{ ai_analysis["confidence"] }}%
+            </div>
+
+            <div class="detail">
+                <span class="label">Summary:</span><br>
+                {{ ai_analysis["summary"] }}
+            </div>
+
+            <div class="detail">
+                <span class="label">Suggested Response:</span><br>
+                {{ ai_analysis["suggested_response"] }}
+            </div>
+
+        </div>
+
+        {% endif %}
+
+        <div class="card">
+
+            <h2>💬 Staff Responses</h2>
+
+            {% if responses %}
+
+                {% for response in responses %}
+
+                    <div class="response">
+                        {{ response["response"] }}
+
+                        <br><br>
+
+                        <small>
+                            {{ response["created_at"] }}
+                        </small>
+                    </div>
+
+                {% endfor %}
+
+            {% else %}
+
+                <p>No staff response yet.</p>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</body>
+</html>
