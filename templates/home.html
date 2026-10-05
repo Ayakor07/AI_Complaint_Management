@@ -1,14 +1,245 @@
+```html
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>AI Complaint Management System</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #111827;
+            color: #f9fafb;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: #030712;
+            border-bottom: 1px solid #374151;
+            padding: 18px 7%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .brand span {
+            color: #60a5fa;
+        }
+
+        .nav-button {
+            text-decoration: none;
+            background: #2563eb;
+            color: white;
+            padding: 10px 22px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: 0.2s;
+        }
+
+        .nav-button:hover {
+            background: #1d4ed8;
+        }
+
+        .hero {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 90px 25px 60px;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #1e3a8a;
+            color: #bfdbfe;
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 25px;
+        }
+
+        h1 {
+            font-size: 48px;
+            line-height: 1.15;
+            max-width: 900px;
+            margin: 0 auto 25px;
+        }
+
+        .highlight {
+            color: #60a5fa;
+        }
+
+        .hero p {
+            color: #d1d5db;
+            font-size: 18px;
+            line-height: 1.7;
+            max-width: 760px;
+            margin: 0 auto 35px;
+        }
+
+        .hero-button {
+            display: inline-block;
+            text-decoration: none;
+            background: #2563eb;
+            color: white;
+            padding: 14px 32px;
+            border-radius: 9px;
+            font-size: 17px;
+            font-weight: 700;
+            transition: 0.2s;
+        }
+
+        .hero-button:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .features {
+            max-width: 1100px;
+            margin: 20px auto 80px;
+            padding: 0 25px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .card {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 28px;
+        }
+
+        .icon {
+            font-size: 30px;
+            margin-bottom: 16px;
+        }
+
+        .card h3 {
+            font-size: 19px;
+            margin-bottom: 10px;
+        }
+
+        .card p {
+            color: #9ca3af;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .footer {
+            background: #030712;
+            border-top: 1px solid #374151;
+            text-align: center;
+            padding: 22px;
+            color: #9ca3af;
+            font-size: 13px;
+        }
+
+        @media (max-width: 800px) {
+            h1 {
+                font-size: 36px;
+            }
+
+            .features {
+                grid-template-columns: 1fr;
+            }
+
+            .navbar {
+                padding: 16px 5%;
+            }
+        }
+    </style>
 </head>
 
 <body>
 
-    <h1>AI-Enhanced Complaint Management and Service Quality Decision Support System</h1>
+    <nav class="navbar">
+        <div class="brand">
+            🎓 <span>AI</span> Complaint Management
+        </div>
 
-    <p>Flask version of the project is working.</p>
+        <a href="/login" class="nav-button">
+            Login
+        </a>
+    </nav>
+
+    <section class="hero">
+
+        <div class="badge">
+            AI-Enhanced Complaint Management System
+        </div>
+
+        <h1>
+            Improve University Services Through
+            <span class="highlight">Intelligent Complaint Management</span>
+        </h1>
+
+        <p>
+            A centralized system for submitting, tracking, assigning,
+            and resolving student complaints with AI-powered complaint
+            classification, sentiment analysis, priority recommendation,
+            summaries, and suggested responses.
+        </p>
+
+        <a href="/login" class="hero-button">
+            Login to System →
+        </a>
+
+    </section>
+
+    <section class="features">
+
+        <div class="card">
+            <div class="icon">📝</div>
+            <h3>Complaint Management</h3>
+            <p>
+                Students can submit complaints and track their status,
+                responses, and resolution progress.
+            </p>
+        </div>
+
+        <div class="card">
+            <div class="icon">🤖</div>
+            <h3>AI-Powered Analysis</h3>
+            <p>
+                Complaints are analyzed using a trained machine learning
+                model for category classification, sentiment, and priority.
+            </p>
+        </div>
+
+        <div class="card">
+            <div class="icon">📊</div>
+            <h3>Administrative Management</h3>
+            <p>
+                Administrators can manage complaints, assign staff,
+                monitor progress, and review system information.
+            </p>
+        </div>
+
+    </section>
+
+    <footer class="footer">
+        AI-Enhanced Complaint Management and Service Quality Decision Support System
+        <br>
+        Final-Year Project Prototype
+    </footer>
 
 </body>
+
 </html>
+```
